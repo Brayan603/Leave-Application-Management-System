@@ -41,15 +41,27 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-  try {
-    await connectDB(); // wait for MongoDB connection
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error("❌ Failed to connect to database:", error);
-    process.exit(1); // stop app if DB fails
+  let retries = 5;
+
+  while (retries > 0) {
+    try {
+      await connectDB(); // wait for MongoDB connection
+      console.log("✅ Database connected successfully");
+
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+      });
+
+      return; // stop retry loop if successful
+    } catch (error) {
+      console.error("❌ Database connection failed. Retrying in 5 seconds...");
+      retries--;
+      await new Promise((res) => setTimeout(res, 5000));
+    }
   }
+
+  console.error("❌ Could not connect to database after multiple attempts.");
+  process.exit(1);
 };
 
 startServer();
