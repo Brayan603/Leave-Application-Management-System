@@ -1,13 +1,16 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const organizationSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: true
+    required: true,
+    trim: true
   },
   code: {
     type: String,
-    required: true
+    required: true,
+    trim: true,
+    unique: true
   },
   isActive: {
     type: Boolean,
@@ -19,6 +22,7 @@ const organizationSchema = new mongoose.Schema({
   }
 });
 
-module.exports = mongoose.model("Organization", organizationSchema);
+const Organization = mongoose.model("Organization", organizationSchema);
+
 export default Organization;
 
