@@ -26,7 +26,7 @@ app.get("/", (req, res) => {
 });
 
 // API Routes
-app.use("/api/organizations", orgRoutes);
+app.use("/api/organizations1", orgRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRouter);
 app.use("/api/leavetypes", leaveTypeRoutes);
