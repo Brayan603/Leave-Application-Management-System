@@ -4,36 +4,65 @@ import Organization from "../models/Organization.js";
 
 const router = express.Router();
 
+/*
+GET ALL ORGANIZATIONS
+*/
 router.get("/", async (req, res) => {
   try {
     const orgs = await Organization
-      .find({ isDeleted: false })
-      .select("_id name code"); // ✅ include code
-    res.status(200).json(orgs); // plain array
+      .find({ isActive: true }) // better than isDeleted if your model uses isActive
+      .select("_id name code")
+      .sort({ name: 1 });
+
+    res.status(200).json(orgs);
   } catch (err) {
     console.error("Error fetching organizations:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error while fetching organizations" });
   }
 });
 
+/*
+CREATE ORGANIZATION
+*/
 router.post("/", async (req, res) => {
   try {
     const { name, code } = req.body;
+
     if (!name || !code) {
-      return res.status(400).json({ message: "name and code are required" });
+      return res.status(400).json({
+        message: "Name and code are required",
+      });
     }
 
-    const existing = await Organization.findOne({ $or: [{ name }, { code }] });
+    // Check duplicate name or code
+    const existing = await Organization.findOne({
+      $or: [
+        { name: name.trim() },
+        { code: code.trim() }
+      ]
+    });
+
     if (existing) {
-      return res.status(400).json({ message: "Organization with same name or code exists" });
+      return res.status(409).json({
+        message: "Organization with same name or code already exists",
+      });
     }
 
-    const org = new Organization({ name, code });
-    await org.save();
-    res.status(201).json(org);
+    const newOrg = new Organization({
+      name: name.trim(),
+      code: code.trim(),
+      isActive: true,
+    });
+
+    const savedOrg = await newOrg.save();
+
+    res.status(201).json(savedOrg);
+
   } catch (err) {
-    console.error("Create org error:", err);
-    res.status(500).json({ message: err.message });
+    console.error("Create organization error:", err);
+    res.status(500).json({
+      message: "Server error while creating organization",
+    });
   }
 });
 
