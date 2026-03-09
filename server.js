@@ -9,8 +9,9 @@ import morgan from "morgan";
 import authRoutes from "./routes/auth.routes.js";
 import userRouter from "./routes/user.routes.js";
 import orgRoutes from "./routes/org.routes.js";
-import leaveTypeRoutes from "./routes/leaveType.routes.js";
+import leaveTypeRoutes from "./routes/LeaveType.routes.js";
 import departmentRoutes from "./routes/department.routes.js";
+import subDepartmentRoutes from "./routes/subDepartments.routes.js";
 
 dotenv.config();
 
@@ -31,7 +32,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/user", userRouter);
 app.use("/api/leavetypes", leaveTypeRoutes);
 app.use("/api/department", departmentRoutes);
-
+app.use("/api/subdepartments", subDepartmentRoutes);
 // Catch-all route
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
@@ -41,27 +42,19 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-  let retries = 5;
-
-  while (retries > 0) {
-    try {
-      await connectDB(); // wait for MongoDB connection
-      console.log("✅ Database connected successfully");
-
-      app.listen(PORT, () => {
-        console.log(`🚀 Server running on port ${PORT}`);
-      });
-
-      return; // stop retry loop if successful
-    } catch (error) {
-      console.error("❌ Database connection failed. Retrying in 5 seconds...");
-      retries--;
-      await new Promise((res) => setTimeout(res, 5000));
-    }
+  try {
+    await connectDB(); // wait for MongoDB connection
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ Failed to connect to database:", error);
+    process.exit(1); // stop app if DB fails
   }
-
-  console.error("❌ Could not connect to database after multiple attempts.");
-  process.exit(1);
 };
 
 startServer();
+
+
+
+    
