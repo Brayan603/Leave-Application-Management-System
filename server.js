@@ -9,8 +9,8 @@ import morgan from "morgan";
 import authRoutes from "./routes/auth.routes.js";
 import userRouter from "./routes/user.routes.js";
 import orgRoutes from "./routes/org.routes.js";
-import departmentRoutes from "./routes/department.routes.js";
-import subDepartmentRoutes from "./routes/subDepartments.routes.js";
+import departmentRoutes from "./routes/department.routes.js"
+
 
 dotenv.config();
 
