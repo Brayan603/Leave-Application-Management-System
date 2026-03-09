@@ -29,9 +29,7 @@ app.get("/", (req, res) => {
 app.use("/api/organizations", orgRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRouter);
-app.use("/api/leavetypes", leaveTypeRoutes);
 app.use("/api/department", departmentRoutes);
-app.use("/api/subdepartments", subDepartmentRoutes);
 // Catch-all route
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
