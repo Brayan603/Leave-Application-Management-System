@@ -1,57 +1,85 @@
 import Department from "../models/Department.js";
+import Organization from "../models/Organization.js";
 
-// Add Department
-export const addDepartment = async (req, res) => {
-  try {
-    const { name, organizationId, subUnits, managerId, status } = req.body;
+// CREATE
+export const createDepartment = async (req, res) => {
+    try {
+        const { name, organization } = req.body;
+        if (!name || !organization) return res.status(400).json({ message: "Name and organization are required." });
 
-    if (!name || !organizationId) {
-      return res.status(400).json({ message: "Department name and organizationId are required" });
+        const orgExists = await Organization.findById(organization);
+        if (!orgExists) return res.status(404).json({ message: "Organization not found." });
+
+        const department = new Department({ name, organization });
+        const savedDept = await department.save();
+        await savedDept.populate("organization", "name code");
+        res.status(201).json(savedDept);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
-
-    const department = new Department({ name, organizationId, subUnits, managerId, status });
-    const saved = await department.save();
-
-    res.status(201).json(saved);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
 };
 
-// Get all Departments
+// GET ALL
 export const getDepartments = async (req, res) => {
-  try {
-    const departments = await Department.find()
-      .populate("organizationId", "name") // show organization name
-      .populate("managerId", "name");     // show manager name
-    res.json(departments);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
+    try {
+        const departments = await Department.find().populate("organization", "name code");
+        res.json(departments);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
 
-// Update Department
+// GET BY ORGANIZATION
+export const getDepartmentsByOrganization = async (req, res) => {
+    try {
+        const { organizationId } = req.params;
+        const departments = await Department.find({ organization: organizationId }).populate("organization", "name code");
+        res.json(departments);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// GET BY ID
+export const getDepartmentById = async (req, res) => {
+    try {
+        const department = await Department.findById(req.params.id).populate("organization", "name code");
+        if (!department) return res.status(404).json({ message: "Department not found." });
+        res.json(department);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// UPDATE
 export const updateDepartment = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updated = await Department.findByIdAndUpdate(id, req.body, { new: true });
-    res.json(updated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
+    try {
+        const { name, organization } = req.body;
+        if (organization) {
+            const orgExists = await Organization.findById(organization);
+            if (!orgExists) return res.status(404).json({ message: "Organization not found." });
+        }
+
+        const updatedDept = await Department.findByIdAndUpdate(
+            req.params.id,
+            { name, organization },
+            { new: true, runValidators: true }
+        ).populate("organization", "name code");
+
+        if (!updatedDept) return res.status(404).json({ message: "Department not found." });
+        res.json(updatedDept);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
 
-// Delete Department
+// DELETE
 export const deleteDepartment = async (req, res) => {
-  try {
-    const { id } = req.params;
-    await Department.findByIdAndDelete(id);
-    res.json({ message: "Department deleted" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
+    try {
+        const deletedDept = await Department.findByIdAndDelete(req.params.id);
+        if (!deletedDept) return res.status(404).json({ message: "Department not found." });
+        res.json({ message: "Department deleted successfully" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
