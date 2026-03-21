@@ -1,3 +1,4 @@
+// src/models/User.js
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
@@ -7,15 +8,13 @@ const userSchema = new mongoose.Schema(
 
     email: { type: String, required: true, unique: true },
 
-    // ✅ FIX: Add password field
     password: {
       type: String,
       required: true,
-      select: false // 🔒 hide password by default
+      select: false // hide password by default
     },
 
     phone: String,
-
     employeeId: { type: String, unique: true },
 
     organization: {
@@ -29,9 +28,11 @@ const userSchema = new mongoose.Schema(
       ref: "Department"
     },
 
+    // ✅ FIX: Use string role
     role: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Role"
+      type: String,
+      enum: ["admin", "manager", "employee"],
+      default: "employee"
     },
 
     manager: {
