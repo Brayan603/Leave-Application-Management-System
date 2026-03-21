@@ -1,4 +1,5 @@
 // backend/server.js
+
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -17,22 +18,26 @@ import leavesRoutes from "./routes/leaves.routes.js";
 
 // Models
 import User from "./models/User.js";
+import Role from "./models/Role.js";
+import Organization from "./models/Organization.js";
+
 import bcrypt from "bcryptjs";
 
 dotenv.config();
 
 const app = express();
 
+// Middleware
 app.use(morgan("dev"));
 app.use(cors());
 app.use(express.json());
 
-// Test root route
+// Test route
 app.get("/", (req, res) => {
   res.send("API running successfully!");
 });
 
-// API Routes
+// Routes
 app.use("/api/organizations", orgRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRouter);
@@ -42,12 +47,14 @@ app.use("/api/subdepartments", subDepartmentRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/leaves", leavesRoutes);
 
-// Catch-all route
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
+// =========================
 // MongoDB Connection
+// =========================
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
@@ -58,37 +65,70 @@ const connectDB = async () => {
   }
 };
 
-// Auto-create admin if none exists
+// =========================
+// Ensure Admin Setup
+// =========================
 const ensureAdmin = async () => {
   try {
-    const adminExists = await User.findOne({ role: "admin" });
+    // 1️⃣ Ensure Role exists
+    let adminRole = await Role.findOne({ name: "admin" });
+    if (!adminRole) {
+      adminRole = await Role.create({ name: "admin" });
+      console.log("✅ Admin role created");
+    }
+
+    // 2️⃣ Ensure Organization exists
+    let org = await Organization.findOne();
+    if (!org) {
+      org = await Organization.create({
+        name: "Default Organization"
+      });
+      console.log("✅ Default organization created");
+    }
+
+    // 3️⃣ Check if admin user exists
+    const adminExists = await User.findOne({
+      email: "admin@example.com"
+    });
+
     if (!adminExists) {
-      const hashedPassword = await bcrypt.hash("123456", 10); // default password
+      const hashedPassword = await bcrypt.hash("123456", 10);
+
       await User.create({
-        name: "Admin",
+        firstName: "Admin",
+        lastName: "User",
         email: "admin@example.com",
         password: hashedPassword,
-        role: "admin",
+        organization: org._id,
+        role: adminRole._id
       });
-      console.log("✅ Default admin created (email: admin@example.com / password: 123456)");
+
+      console.log("✅ Admin user created");
+      console.log("📧 Email: admin@example.com");
+      console.log("🔑 Password: 123456");
     } else {
       console.log("✅ Admin already exists");
     }
+
   } catch (error) {
-    console.error("❌ Error checking/creating admin:", error);
+    console.error("❌ Error creating admin:", error);
   }
 };
 
-// START SERVER ONLY AFTER DB CONNECTS
+// =========================
+// Start Server
+// =========================
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
-    await connectDB();       // Wait for MongoDB
-    await ensureAdmin();     // Ensure admin exists
+    await connectDB();   // Connect DB
+    await ensureAdmin(); // Setup admin, role, org
+
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
+
   } catch (error) {
     console.error("❌ Failed to start server:", error);
     process.exit(1);
