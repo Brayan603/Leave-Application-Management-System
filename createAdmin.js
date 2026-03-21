@@ -1,46 +1,34 @@
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
-import User from "./models/User.js";
+import dotenv from "dotenv";
+import User from "./src/models/User.js"; // adjust path if needed
 
 dotenv.config();
 
-const resetAdmin = async () => {
+const run = async () => {
   try {
+    // 1️⃣ Connect to MongoDB
     await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ Connected to MongoDB");
+    console.log("MongoDB connected");
 
-    const hashedPassword = await bcrypt.hash("admin123", 10);
+    // 2️⃣ Hash the password
+    const hashedPassword = await bcrypt.hash("123456", 10); // you can change the password
 
-    let admin = await User.findOne({ email: "admin@example.com" });
+    // 3️⃣ Create admin user
+    const admin = await User.create({
+      name: "Admin",
+      email: "admin@example.com",
+      password: hashedPassword,
+      role: "admin"
+    });
 
-    if (!admin) {
-      admin = new User({
-        name: "Admin",
-        email: "admin@example.com",
-        phone: "0000000000",
-        organization: "Admin Org",
-        startDate: new Date(),
-        endDate: new Date(),
-        employmentType: "Full-time",
-        password: hashedPassword,
-        role: "admin"
-      });
-
-      await admin.save();
-      console.log("✅ Admin created with password: admin123");
-    } else {
-      admin.password = hashedPassword;
-      admin.role = "admin";
-      await admin.save();
-      console.log("✅ Admin password reset to: admin123");
-    }
-
-    mongoose.disconnect();
-  } catch (err) {
-    console.log("❌ Error:", err);
+    console.log("Admin user created:", admin);
+    process.exit();
+  } catch (error) {
+    console.error("Error creating admin user:", error);
+    process.exit(1);
   }
 };
 
-resetAdmin();
+run();
 
