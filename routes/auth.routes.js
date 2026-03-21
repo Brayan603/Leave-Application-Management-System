@@ -1,50 +1,13 @@
+// src/routes/auth.routes.js
 import express from "express";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-import User from "../models/User.js";
+import { loginAdmin } from "../controllers/auth.controller.js";
 
 const router = express.Router();
 
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid password" });
-    }
-
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
-
-    return res.json({
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        name: user.name
-      }
-    });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+// POST /api/auth/login
+router.post("/login", loginAdmin);
 
 export default router;
-
 
 
 
