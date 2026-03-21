@@ -11,10 +11,10 @@ export const loginAdmin = async (req, res) => {
       return res.status(400).json({ message: "Email and password required" });
     }
 
-    // ✅ Populate role name
+    // populate role name, if role not set, will be undefined
     const user = await User.findOne({ email: email.trim() })
       .select("+password")
-      .populate("role", "name"); // only include name
+      .populate("role", "name"); 
 
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials" });
@@ -25,13 +25,15 @@ export const loginAdmin = async (req, res) => {
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    // ✅ Use optional chaining and default
+    const roleName = user.role?.name?.toLowerCase() || "employee";
+
     const token = jwt.sign(
-      { id: user._id, role: user.role.name },
+      { id: user._id, role: roleName },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
     );
@@ -42,7 +44,7 @@ export const loginAdmin = async (req, res) => {
         id: user._id,
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
-        role: user.role.name, // now a string: "admin", "employee", etc.
+        role: roleName, // safe now
       },
     });
 
