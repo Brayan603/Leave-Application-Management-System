@@ -1,4 +1,4 @@
-import SubDepartment from "../models/SubDepartment.js";
+import SubDepartment from "../models/subDepartment.js";
 
 // Create SubDepartment
 export const createSubDepartment = async (req, res) => {
