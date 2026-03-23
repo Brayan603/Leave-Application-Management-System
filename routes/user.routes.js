@@ -1,54 +1,72 @@
 import express from "express";
+import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import { protectAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-// Get all users
-router.get("/", async (req, res) => {
+// Get all users (admin only)
+router.get("/", protectAdmin, async (req, res) => {
   try {
-    const users = await User.find()
-      .populate("organization")
-      .populate("department")
-      .populate("role")
-      .populate("manager");
-    res.json(users);
+    const users = await User.find();
+    res.json(users.map(u => ({
+      id: u._id,
+      name: `${u.firstName} ${u.lastName}`,
+      email: u.email,
+      role: u.role
+    })));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Add new user
-router.post("/", async (req, res) => {
+// Create user (admin only)
+router.post("/", protectAdmin, async (req, res) => {
   try {
-    const user = new User(req.body);
-    await user.save();
-    res.status(201).json(user);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    const { firstName, lastName, email, password, role } = req.body;
 
-// Update user
-router.put("/:id", async (req, res) => {
-  try {
-    const updatedUser = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json(updatedUser);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    if (!firstName || !lastName || !email || !password || !role) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
 
-// Delete user
-router.delete("/:id", async (req, res) => {
-  try {
-    await User.findByIdAndDelete(req.params.id);
-    res.json({ message: "User deleted" });
+    const existingUser = await User.findOne({ email: email.trim() });
+    if (existingUser) return res.status(400).json({ message: "User already exists" });
+
+    const hashedPassword = await bcrypt.hash(password.trim(), 10);
+
+    const user = await User.create({
+      firstName,
+      lastName,
+      email: email.trim(),
+      password: hashedPassword,
+      role
+    });
+
+    res.status(201).json({
+      id: user._id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role
+    });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 export default router;
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
