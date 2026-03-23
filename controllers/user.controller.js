@@ -1,40 +1,50 @@
+// controllers/userController.js
 import User from "../models/User.js";
-import Organization from "../models/Organization.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
+// Admin creates a user
 export const createUser = async (req, res) => {
   try {
-    const { email, password, role, organizationId } = req.body;
+    const { firstName, lastName, email, password, role } = req.body;
 
-    if (!email || !password || !role || !organizationId) {
-      return res.status(400).json({ message: "All fields required" });
+    // 1️⃣ Check if all fields exist
+    if (!firstName || !lastName || !email || !password || !role) {
+      return res.status(400).json({ message: "All fields are required" });
     }
 
-    const org = await Organization.findById(organizationId);
-    if (!org) return res.status(404).json({ message: "Organization not found" });
-
-    const existing = await User.findOne({ email });
-    if (existing) {
+    // 2️⃣ Check if user already exists
+    const existingUser = await User.findOne({ email: email.trim() });
+    if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // 3️⃣ Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password.trim(), salt);
 
+    // 4️⃣ Create the user
     const user = await User.create({
-      email,
+      firstName,
+      lastName,
+      email: email.trim(),
       password: hashedPassword,
       role,
-      organization: organizationId
     });
 
     res.status(201).json({
       message: "User created successfully",
-      user
+      user: {
+        id: user._id,
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        role: user.role,
+      },
     });
 
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error("Create user error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
