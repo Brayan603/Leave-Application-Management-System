@@ -39,7 +39,7 @@ router.put("/:id", authMiddleware, isAdmin, updateDepartment);
 
 // ===================== DELETE =====================
 // 🔒 Optional: admin only
-router.delete("/:id", authMiddleware, isAdmin, deleteDepartment);
+router.delete("/:id", auth.middleware, isAdmin, deleteDepartment);
 
 
 export default router;
