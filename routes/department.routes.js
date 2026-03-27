@@ -1,20 +1,45 @@
 import express from "express";
 import {
-    createDepartment,
-    getDepartments,
-    getDepartmentsByOrganization,
-    getDepartmentById,
-    updateDepartment,
-    deleteDepartment
+  createDepartment,
+  getDepartments,
+  getDepartmentsByOrganization,
+  getDepartmentById,
+  updateDepartment,
+  deleteDepartment
 } from "../controllers/department.controllers.js";
+
+// OPTIONAL (if you have auth)
+import { authMiddleware, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/", createDepartment);
+// ===================== CREATE =====================
+// 🔒 Optional: restrict to admin
+router.post("/", authMiddleware, isAdmin, createDepartment);
+// If you want all users to create, use:
+// router.post("/", createDepartment);
+
+
+// ===================== GET =====================
+
+// ✅ Get all departments
 router.get("/", getDepartments);
-router.get("/:id", getDepartmentById);
+
+// ✅ Get by organization (MUST come before :id)
 router.get("/organization/:organizationId", getDepartmentsByOrganization);
-router.put("/:id", updateDepartment);
-router.delete("/:id", deleteDepartment);
+
+// ✅ Get by ID
+router.get("/:id", getDepartmentById);
+
+
+// ===================== UPDATE =====================
+// 🔒 Optional: admin only
+router.put("/:id", authMiddleware, isAdmin, updateDepartment);
+
+
+// ===================== DELETE =====================
+// 🔒 Optional: admin only
+router.delete("/:id", authMiddleware, isAdmin, deleteDepartment);
+
 
 export default router;
