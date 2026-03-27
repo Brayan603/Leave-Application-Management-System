@@ -9,7 +9,7 @@ import {
 } from "../controllers/department.controllers.js";
 
 // OPTIONAL (if you have auth)
-import { authMiddleware, isAdmin } from "../middleware/authMiddleware.js";
+import { authMiddleware, isAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
