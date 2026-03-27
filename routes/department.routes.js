@@ -8,23 +8,22 @@ import {
   deleteDepartment
 } from "../controllers/department.controllers.js";
 
-// ✅ FIXED IMPORT
-import { authMiddleware, isAdmin } from "../middleware/auth.middleware.js";
+import { protectAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-// ===================== CREATE =====================
-router.post("/", authMiddleware, isAdmin, createDepartment);
+// CREATE
+router.post("/", protectAdmin, createDepartment);
 
-// ===================== GET =====================
+// GET
 router.get("/", getDepartments);
 router.get("/organization/:organizationId", getDepartmentsByOrganization);
 router.get("/:id", getDepartmentById);
 
-// ===================== UPDATE =====================
-router.put("/:id", authMiddleware, isAdmin, updateDepartment);
+// UPDATE
+router.put("/:id", protectAdmin, updateDepartment);
 
-// ===================== DELETE =====================
-router.delete("/:id", authMiddleware, isAdmin, deleteDepartment);
+// DELETE
+router.delete("/:id", protectAdmin, deleteDepartment);
 
 export default router;
