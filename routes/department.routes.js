@@ -9,13 +9,13 @@ import {
 } from "../controllers/department.controllers.js";
 
 // OPTIONAL (if you have auth)
-import { authMiddleware, isAdmin } from "../middleware/auth.middleware.js";
+import { auth.middleware, isAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 // ===================== CREATE =====================
 // 🔒 Optional: restrict to admin
-router.post("/", authMiddleware, isAdmin, createDepartment);
+router.post("/", auth.middleware, isAdmin, createDepartment);
 // If you want all users to create, use:
 // router.post("/", createDepartment);
 
@@ -34,7 +34,7 @@ router.get("/:id", getDepartmentById);
 
 // ===================== UPDATE =====================
 // 🔒 Optional: admin only
-router.put("/:id", authMiddleware, isAdmin, updateDepartment);
+router.put("/:id", auth.middleware, isAdmin, updateDepartment);
 
 
 // ===================== DELETE =====================
