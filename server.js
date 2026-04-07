@@ -22,8 +22,8 @@ app.use(morgan("dev"));
 
 // 🔧 Fix CORS: allow frontend at localhost:3000 and credentials
 app.use(cors({
-  origin: "leave-management20-systems.vercel.app",  // your React app
-  credentials: true                 // allow cookies/headers
+  origin: "https://leave-management20-systems.vercel.app",
+  credentials: true
 }));
 
 app.use(express.json());
