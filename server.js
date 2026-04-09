@@ -13,6 +13,7 @@ import departmentRoutes from "./routes/department.routes.js";
 import subDepartmentRoutes from "./routes/subDepartments.routes.js";
 import leaveBalanceRoutes from "./routes/leaveBalance.routes.js";
 import entitlementRoutes from "./routes/entitlement.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 
 dotenv.config();
 
@@ -22,8 +23,8 @@ app.use(morgan("dev"));
 
 // 🔧 Fix CORS: allow frontend at localhost:3000 and credentials
 app.use(cors({
-  origin: "https://leave-management20-systems.vercel.app",
-  credentials: true
+  origin: "https://leave-management20-systems.vercel.app",  // your React app
+  credentials: true                 // allow cookies/headers
 }));
 
 app.use(express.json());
@@ -42,6 +43,7 @@ app.use("/api/department", departmentRoutes);
 app.use("/api/subdepartments", subDepartmentRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/entitlements", entitlementRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Catch-all route
 app.use((req, res) => {
@@ -64,6 +66,12 @@ const startServer = async () => {
 };
 
 startServer();
+
+
+// # Windows PowerShell
+// tasklist /FI "IMAGENAME eq node.exe"
+// # Replace <PID> with the number from tasklist
+// taskkill /PID <PID> /F
 
 
 // # Windows PowerShell
