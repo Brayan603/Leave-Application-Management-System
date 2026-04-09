@@ -1,9 +1,12 @@
 import Entitlement from "../models/Entitlement.js";
+import { differenceInMonths } from "date-fns";
 
-// ✅ Create Entitlement (Admin) - SUPPORTS MULTIPLE OR SINGLE
+// ============================
+// ✅ Create Entitlement (Admin)
+// ============================
 export const createEntitlement = async (req, res) => {
   try {
-    const { userId, leaveTypeId, leaveTypeIds, totalDays } = req.body;
+    const { userId, leaveTypeId, leaveTypeIds, totalDays, startDate } = req.body;
 
     // 🔥 Allow BOTH single or multiple
     const types = leaveTypeIds?.length
@@ -31,8 +34,9 @@ export const createEntitlement = async (req, res) => {
         const entitlement = await Entitlement.create({
           user: userId,
           leaveType: typeId,
-          totalDays: totalDays || 20, // default if not provided
+          totalDays: totalDays || 0, // start at 0 for accrual types
           usedDays: 0,
+          startDate: startDate || new Date(), // default to now
         });
 
         created.push(entitlement);
@@ -49,9 +53,9 @@ export const createEntitlement = async (req, res) => {
   }
 };
 
-
-
+// ============================
 // ✅ Get all entitlements
+// ============================
 export const getAllEntitlements = async (req, res) => {
   try {
     const data = await Entitlement.find()
@@ -64,15 +68,32 @@ export const getAllEntitlements = async (req, res) => {
   }
 };
 
-
-
-// ✅ Get user entitlements
+// ============================
+// ✅ Get user entitlements (with accrual)
+// ============================
 export const getUserEntitlements = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const data = await Entitlement.find({ user: userId })
+    let data = await Entitlement.find({ user: userId })
       .populate("leaveType", "name");
+
+    // Apply accrual logic for Annual Leave
+    data = data.map((e) => {
+      if (e.leaveType?.name === "Annual Leave") {
+        const today = new Date();
+        const monthsWorked = differenceInMonths(today, e.startDate || today);
+
+        const accrualRate = 1.67; // days per month
+        const maxDays = 20;       // annual cap
+
+        const accrued = Math.min(monthsWorked * accrualRate, maxDays);
+
+        // dynamically override totalDays
+        e.totalDays = accrued;
+      }
+      return e;
+    });
 
     res.json(data);
   } catch (err) {
@@ -80,9 +101,9 @@ export const getUserEntitlements = async (req, res) => {
   }
 };
 
-
-
+// ============================
 // ✅ Update entitlement
+// ============================
 export const updateEntitlement = async (req, res) => {
   try {
     const { id } = req.params;
@@ -97,9 +118,9 @@ export const updateEntitlement = async (req, res) => {
   }
 };
 
-
-
+// ============================
 // ✅ Delete entitlement
+// ============================
 export const deleteEntitlement = async (req, res) => {
   try {
     const { id } = req.params;
@@ -111,3 +132,4 @@ export const deleteEntitlement = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
