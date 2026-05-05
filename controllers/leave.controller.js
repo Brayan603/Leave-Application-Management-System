@@ -82,13 +82,16 @@ export const applyLeave = async (req, res) => {
 
  export const getPendingLeaves = async (req, res) => {
   try {
-    const managerId = req.user?._id || req.user?.id || req.user;
+    console.log("🔥 GET PENDING LEAVES HIT");
+
+    // ✅ SAFE: always rely on decoded id from authMiddleware
+    const managerId = req.user?.id || req.user?._id;
 
     if (!managerId) {
-      return res.status(401).json({ message: "User not authenticated" });
+      return res.status(401).json({ message: "Not authorized" });
     }
 
-    // 1. Get ONLY employees under this manager
+    // Get employees under this manager
     const employees = await User.find({
       manager: managerId,
       role: "employee",
@@ -96,21 +99,18 @@ export const applyLeave = async (req, res) => {
 
     const employeeIds = employees.map((e) => e._id);
 
-    // 2. If no employees → return empty
     if (employeeIds.length === 0) {
-      return res.json([]);
+      return res.status(200).json([]);
     }
 
-    // 3. STRICT FILTER: only pending + only manager's employees
     const leaves = await Leave.find({
       status: "Pending",
       user: { $in: employeeIds },
     })
-      .populate("user", "firstName lastName email manager")
+      .populate("user", "firstName lastName email")
       .populate("leaveType", "name")
       .sort({ createdAt: -1 });
 
-    // 4. Format response
     const formatted = leaves.map((l) => ({
       id: l._id,
       employee: `${l.user?.firstName || ""} ${l.user?.lastName || ""}`.trim(),
@@ -124,7 +124,12 @@ export const applyLeave = async (req, res) => {
       createdAt: l.createdAt,
     }));
 
-    return res.json(formatted);
+    // 🔥 IMPORTANT: prevent 304 caching issues
+    return res
+      .status(200)
+      .set("Cache-Control", "no-store")
+      .json(formatted);
+
   } catch (err) {
     console.error("PENDING ERROR:", err);
     return res.status(500).json({ message: "Error fetching pending leaves" });
