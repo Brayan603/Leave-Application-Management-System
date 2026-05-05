@@ -2,81 +2,100 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 // ============================
-// 🔐 General Auth Middleware
+// 🔐 AUTH MIDDLEWARE (SINGLE SOURCE OF TRUTH)
 // ============================
-export const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token provided" });
-
+export const authMiddleware = async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    console.error("AUTH ERROR:", err);
-    res.status(401).json({ message: "Invalid token" });
-  }
-};
+    console.log("🔥 AUTH MIDDLEWARE HIT");
 
-// ============================
-// ✅ Protect Admin Routes
-// ============================
-export const protectAdmin = async (req, res, next) => {
-  try {
     const authHeader = req.headers.authorization;
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Not authorized" });
+      return res.status(401).json({ message: "No token provided" });
     }
 
     const token = authHeader.split(" ")[1];
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findById(decoded.id);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Admins only." });
-    }
+    console.log("🔓 DECODED TOKEN:", decoded);
 
-    req.user = user;
-    next();
-  } catch (err) {
-    console.error("ADMIN PROTECT ERROR:", err);
-    res.status(401).json({ message: "Not authorized" });
-  }
-};
+    // ✅ ALWAYS FETCH FULL USER FROM DB
+    const user = await User.findById(decoded.id).select("-password");
 
-// ============================
-// ✅ Protect Any Authenticated User
-// ============================
-export const protect = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    const user = await User.findById(decoded.id);
     if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // 🔥 STANDARDIZED req.user (CRITICAL FIX)
+    req.user = user;
+
+    console.log("👤 LOGGED IN USER:", {
+      id: user._id,
+      role: user.role,
+      email: user.email,
+    });
+
+    next();
+  } catch (err) {
+    console.error("❌ AUTH ERROR:", err.message);
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+// ============================
+// ✅ PROTECT ANY AUTHENTICATED USER
+// ============================
+export const protect = (req, res, next) => {
+  try {
+    if (!req.user) {
       return res.status(401).json({ message: "Not authorized" });
     }
 
-    req.user = user;
     next();
   } catch (err) {
     console.error("PROTECT ERROR:", err);
-    res.status(401).json({ message: "Not authorized" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
 // ============================
-// ✅ Require Manager Role
+// ✅ PROTECT ADMIN ROUTES
+// ============================
+export const protectAdmin = (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Admins only" });
+    }
+
+    next();
+  } catch (err) {
+    console.error("ADMIN ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ============================
+// 👨‍💼 REQUIRE MANAGER ROLE
 // ============================
 export const requireManager = (req, res, next) => {
-  if (!req.user || req.user.role !== "manager") {
-    return res.status(403).json({ message: "Managers only" });
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    if (req.user.role !== "manager") {
+      return res.status(403).json({ message: "Managers only" });
+    }
+
+    next();
+  } catch (err) {
+    console.error("MANAGER ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
   }
-  next();
 };
 
