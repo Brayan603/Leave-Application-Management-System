@@ -2,33 +2,55 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 
-// Admin creates a user
+// 🔐 helper
+const getUserId = (req) => req.user?.id || req.user?._id || req.user;
+
+// ============================
+// ✅ CREATE USER (WITH MANAGER FILTERING)
+// ============================
 export const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, role } = req.body;
+    const { firstName, lastName, email, password, role, manager } = req.body;
 
-    // 1️⃣ Check if all fields exist
+    const currentUserId = getUserId(req);
+    const currentUser = await User.findById(currentUserId);
+
+    // 1️⃣ Validate fields
     if (!firstName || !lastName || !email || !password || !role) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // 2️⃣ Check if user already exists
+    // 2️⃣ Check existing user
     const existingUser = await User.findOne({ email: email.trim() });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // 3️⃣ Hash the password
+    // 3️⃣ Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password.trim(), salt);
 
-    // 4️⃣ Create the user
+    // ============================
+    // 🔥 MANAGER ASSIGNMENT LOGIC
+    // ============================
+    let assignedManager = null;
+
+    if (currentUser.role === "manager") {
+      // ✅ Manager creates → auto assign himself
+      assignedManager = currentUserId;
+    } else if (currentUser.role === "admin") {
+      // ✅ Admin can assign manager manually
+      assignedManager = manager || null;
+    }
+
+    // 4️⃣ Create user
     const user = await User.create({
       firstName,
       lastName,
       email: email.trim(),
       password: hashedPassword,
       role,
+      manager: assignedManager, // 🔥 KEY FIELD
     });
 
     res.status(201).json({
@@ -38,12 +60,36 @@ export const createUser = async (req, res) => {
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
         role: user.role,
+        manager: user.manager,
       },
     });
 
   } catch (error) {
     console.error("Create user error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ============================
+// ✅ GET TEAM OVERVIEW (MANAGER ONLY)
+// ============================
+export const getTeamOverview = async (req, res) => {
+  try {
+    const managerId = req.user?.id || req.user?._id || req.user;
+
+    if (!managerId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
+    // 🔥 ONLY employees assigned to this manager
+    const employees = await User.find({ manager: managerId })
+      .select("firstName lastName email role createdAt")
+      .sort({ createdAt: -1 });
+
+    return res.json(employees || []);
+  } catch (error) {
+    console.error("TEAM OVERVIEW ERROR:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
