@@ -6,109 +6,42 @@ import User from "../models/User.js";
 // ============================
 export const authMiddleware = async (req, res, next) => {
   try {
-    console.log("🔥 AUTH MIDDLEWARE HIT");
+    console.log("🔥 HEADERS:", req.headers.authorization);
 
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.log("❌ NO TOKEN PROVIDED");
-      return res.status(401).json({ message: "No token provided" });
+    if (!authHeader) {
+      console.log("❌ NO AUTH HEADER");
+      return res.status(401).json({ message: "Not authorized (no header)" });
+    }
+
+    if (!authHeader.startsWith("Bearer ")) {
+      console.log("❌ BAD FORMAT:", authHeader);
+      return res.status(401).json({ message: "Not authorized (bad format)" });
     }
 
     const token = authHeader.split(" ")[1];
 
+    console.log("🔑 TOKEN:", token);
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    console.log("🔓 DECODED TOKEN:", decoded);
+    console.log("🔓 DECODED:", decoded);
 
-    // ✅ ALWAYS fetch full user from DB (FIX)
-    const user = await User.findById(decoded.id).select("-password");
+    const user = await User.findById(decoded.id);
 
     if (!user) {
       console.log("❌ USER NOT FOUND");
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({ message: "Not authorized (no user)" });
     }
 
     req.user = user;
 
-    console.log("👤 LOGGED IN USER:", {
-      id: user._id,
-      role: user.role,
-      email: user.email,
-    });
+    console.log("👤 USER LOGGED IN:", user.email, user.role);
 
     next();
   } catch (err) {
-    console.error("❌ AUTH ERROR:", err);
-    return res.status(401).json({ message: "Invalid token" });
+    console.error("❌ AUTH ERROR:", err.message);
+    return res.status(401).json({ message: "Not authorized (token error)" });
   }
 };
-
-// ============================
-// ✅ PROTECT ADMIN ROUTES
-// ============================
-export const protectAdmin = (req, res, next) => {
-  try {
-    console.log("🔥 ADMIN CHECK");
-
-    if (!req.user) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-
-    if (req.user.role !== "admin") {
-      console.log("❌ NOT ADMIN:", req.user.role);
-      return res.status(403).json({ message: "Access denied. Admins only." });
-    }
-
-    next();
-  } catch (err) {
-    console.error("ADMIN PROTECT ERROR:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// ============================
-// ✅ PROTECT ANY AUTHENTICATED USER
-// ============================
-export const protect = (req, res, next) => {
-  try {
-    console.log("🔥 PROTECT MIDDLEWARE HIT");
-
-    if (!req.user) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-
-    next();
-  } catch (err) {
-    console.error("PROTECT ERROR:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// ============================
-// 👨‍💼 REQUIRE MANAGER ROLE
-// ============================
-export const requireManager = (req, res, next) => {
-  try {
-    console.log("🔥 MANAGER CHECK");
-
-    if (!req.user) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-
-    if (req.user.role !== "manager") {
-      console.log("❌ NOT MANAGER:", req.user.role);
-      return res.status(403).json({ message: "Managers only" });
-    }
-
-    next();
-  } catch (err) {
-    console.error("MANAGER ERROR:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-
-
-
-
