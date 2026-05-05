@@ -240,3 +240,33 @@ export const getMyLeaves = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+export const getUserLeaveHistory = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id || req.user;
+
+    const leaves = await Leave.find({ user: userId })
+      .populate("leaveType", "name")
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    const formatted = leaves.map((l) => ({
+      id: l._id,
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
+      approvedBy: l.approvedBy
+        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
+        : "-",
+      createdAt: l.createdAt,
+    }));
+
+    return res.json(formatted);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
