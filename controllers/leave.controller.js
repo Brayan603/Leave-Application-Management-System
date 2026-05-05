@@ -75,28 +75,30 @@ export const applyLeave = async (req, res) => {
   }
 };
 
-// ============================
-// ✅ GET PENDING LEAVES
-// ============================
-export const getPendingLeaves = async (req, res) => {
+//getPendingLeaves//
+
+ export const getPendingLeaves = async (req, res) => {
   try {
-    const managerId = getUserId(req);
+    const managerId = req.user?._id || req.user?.id || req.user;
 
     if (!managerId) {
       return res.status(401).json({ message: "User not authenticated" });
     }
 
+    // 1. Get ONLY employees under this manager
     const employees = await User.find({
-      manager: new mongoose.Types.ObjectId(managerId),
+      manager: managerId,
       role: "employee",
     }).select("_id");
 
     const employeeIds = employees.map((e) => e._id);
 
-    if (!employeeIds.length) {
+    // 2. If no employees → return empty
+    if (employeeIds.length === 0) {
       return res.json([]);
     }
 
+    // 3. STRICT FILTER: only pending + only manager's employees
     const leaves = await Leave.find({
       status: "Pending",
       user: { $in: employeeIds },
@@ -105,18 +107,15 @@ export const getPendingLeaves = async (req, res) => {
       .populate("leaveType", "name")
       .sort({ createdAt: -1 });
 
+    // 4. Format response
     const formatted = leaves.map((l) => ({
       id: l._id,
-      employee: `${l.user?.firstName || ""} ${l.user?.lastName || ""}`,
+      employee: `${l.user?.firstName || ""} ${l.user?.lastName || ""}`.trim(),
       email: l.user?.email || "",
       type: l.leaveType?.name || "Unknown",
       start: l.start,
       end: l.end,
-      leaveDays:
-        l.days ||
-        Math.ceil(
-          (new Date(l.end) - new Date(l.start)) / (1000 * 60 * 60 * 24)
-        ) + 1,
+      leaveDays: l.days,
       reason: l.reason,
       status: l.status,
       createdAt: l.createdAt,
