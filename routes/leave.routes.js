@@ -4,16 +4,12 @@ import multer from "multer";
 import {
   applyLeave,
   getLeaveTypes,
-  getUserLeaveTypes,
-  getUserLeaveHistory,
   getMyLeaves,
-  getAllLeaves,
   getPendingLeaves,
   updateLeaveStatus,
 } from "../controllers/leave.controller.js";
 
-import { protect, requireManager } from "../middleware/auth.middleware.js"; 
-// 👆 import the actual functions you exported
+import { protect, requireManager } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
@@ -36,28 +32,17 @@ const upload = multer({ storage });
 // 📌 ROUTES
 // ============================
 
-// Get all leave types
+// Leave types (public or authenticated)
 router.get("/types", getLeaveTypes);
 
-// User-specific leave types
-router.get("/my-leave-types", protect, getUserLeaveTypes);
-
-// User leave history
-router.get("/history", protect, getUserLeaveHistory);
-
-// My leaves (alternative endpoint)
+// My leaves (employee)
 router.get("/my-leaves", protect, getMyLeaves);
-
-// Admin all leaves
-router.get("/all", protect, getAllLeaves);
 
 // Apply leave
 router.post("/apply", protect, upload.single("attachment"), applyLeave);
 
-// Manager: pending leaves
+// Manager only
 router.get("/pending", protect, requireManager, getPendingLeaves);
-
-// Manager: update leave status
 router.put("/:id/status", protect, requireManager, updateLeaveStatus);
 
 export default router;
