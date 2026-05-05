@@ -47,59 +47,63 @@ export const protectAdmin = async (req, res, next) => {
 // ============================
 // ✅ Protect Any Authenticated User
 // ============================
+
 export const protect = async (req, res, next) => {
   try {
+    console.log("🔥 PROTECT HIT");
+    console.log("AUTH HEADER:", req.headers.authorization);
+
     const authHeader = req.headers.authorization;
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Not authorized" });
+      console.log("❌ NO TOKEN");
+      return res.status(401).json({ message: "Not authorized (no token)" });
     }
 
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    console.log("🔓 DECODED:", decoded);
+
     const user = await User.findById(decoded.id);
+
+    console.log("👤 USER FOUND:", user?.email);
+
     if (!user) {
-      return res.status(401).json({ message: "Not authorized" });
+      console.log("❌ USER NOT FOUND");
+      return res.status(401).json({ message: "Not authorized (no user)" });
     }
 
     req.user = user;
+
     next();
   } catch (err) {
-    console.error("PROTECT ERROR:", err);
-    res.status(401).json({ message: "Not authorized" });
+    console.log("❌ PROTECT ERROR:", err.message);
+    return res.status(401).json({ message: "Not authorized (token error)" });
   }
 };
 
-// ============================
-// ✅ Require Manager Role
-// ============================
-export const requireManager = async (req, res, next) => {
+export const requireManager = (req, res, next) => {
   try {
-    // authMiddleware gives ONLY decoded { id }
-    const userId = req.user?.id;
+    console.log("🔥 REQUIRE MANAGER HIT");
+    console.log("USER ROLE:", req.user?.role);
 
-    if (!userId) {
-      return res.status(401).json({ message: "Not authorized" });
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authorized (no user)" });
     }
 
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(401).json({ message: "Not authorized" });
+    if (req.user.role !== "manager") {
+      console.log("❌ NOT MANAGER");
+      return res.status(403).json({ message: "Not authorized (not manager)" });
     }
-
-    if (user.role !== "manager") {
-      return res.status(403).json({ message: "Managers only" });
-    }
-
-    // attach full user (optional but safe)
-    req.user = user;
 
     next();
   } catch (err) {
-    console.error("MANAGER ERROR:", err);
+    console.log("❌ MANAGER ERROR:", err.message);
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+    
 
 
