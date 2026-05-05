@@ -1,6 +1,7 @@
 import Leave from "../models/LeaveRequest.js";
 import Entitlement from "../models/Entitlement.js";
 import LeaveType from "../models/LeaveType.js";
+import User from "../models/User.js"; // ✅ needed for manager filtering
 
 // ============================
 // 🔐 SAFE USER ID HELPER
@@ -8,7 +9,7 @@ import LeaveType from "../models/LeaveType.js";
 const getUserId = (req) => req.user?.id || req.user?._id || req.user;
 
 // ============================
-// ✅ APPLY LEAVE + AUTO DEDUCT (FIXED ❌ remove deduction here)
+// ✅ APPLY LEAVE
 // ============================
 export const applyLeave = async (req, res) => {
   try {
@@ -49,8 +50,6 @@ export const applyLeave = async (req, res) => {
       status: "Pending",
     });
 
-    // ❌ REMOVED: entitlement deduction here
-
     return res.status(201).json({
       message: "Leave applied successfully",
       leave,
@@ -62,119 +61,38 @@ export const applyLeave = async (req, res) => {
 };
 
 // ============================
-// ✅ GET MY LEAVES
-// ============================
-export const getMyLeaves = async (req, res) => {
-  try {
-    const userId = getUserId(req);
-
-    const leaves = await Leave.find({ user: userId })
-      .populate("leaveType", "name")
-      .sort({ createdAt: -1 });
-
-    return res.json(leaves || []);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// ============================
-// ✅ GET ALL LEAVES (ADMIN)
-// ============================
-export const getAllLeaves = async (req, res) => {
-  try {
-    const leaves = await Leave.find()
-      .populate("user", "firstName lastName email")
-      .populate("leaveType", "name")
-      .populate("approvedBy", "firstName lastName email")
-      .sort({ createdAt: -1 });
-
-    return res.json(leaves || []);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// ============================
-// ✅ GET LEAVE TYPES
-// ============================
-export const getLeaveTypes = async (req, res) => {
-  try {
-    const leaveTypes = await LeaveType.find();
-    return res.json(leaveTypes || []);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// ============================
-// ✅ USER LEAVE TYPES
-// ============================
-export const getUserLeaveTypes = async (req, res) => {
-  try {
-    const userId = getUserId(req);
-
-    const entitlements = await Entitlement.find({ user: userId })
-      .populate("leaveType", "name totalDays");
-
-    return res.json(entitlements || []);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// ============================
-// ✅ USER LEAVE HISTORY (EMPLOYEE)
-// ============================
-export const getUserLeaveHistory = async (req, res) => {
-  try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User not authenticated" });
-
-    const leaves = await Leave.find({ user: userId })
-      .populate("leaveType", "name")
-      .populate("approvedBy", "firstName lastName email")
-      .sort({ createdAt: -1 });
-
-    const formatted = (leaves || []).map((l) => ({
-      id: l._id,
-      type: l.leaveType?.name || "Unknown",
-      start: l.start,
-      end: l.end,
-      days: l.days,
-      reason: l.reason,
-      status: l.status,
-      approvedBy: l.approvedBy
-        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
-        : "-",
-      attachment: l.attachment,
-      createdAt: l.createdAt,
-    }));
-
-    return res.json(formatted);
-  } catch (error) {
-    console.error("HISTORY ERROR:", error);
-    return res.status(500).json({ message: "Error fetching leave history" });
-  }
-};
-
-// ============================
-// ✅ GET PENDING LEAVES (MANAGER)
+// ✅ GET PENDING LEAVES (MANAGER FILTERED ONLY)
 // ============================
 export const getPendingLeaves = async (req, res) => {
   try {
-    const leaves = await Leave.find({ status: "Pending" })
+    const managerId = getUserId(req);
+
+    if (!managerId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
+    // 🔥 Get employees under this manager
+    const employees = await User.find({ manager: managerId }).select("_id");
+
+    const employeeIds = employees.map((emp) => emp._id);
+
+    if (employeeIds.length === 0) {
+      return res.json([]); // no employees
+    }
+
+    // 🔥 Get ONLY their pending leaves
+    const leaves = await Leave.find({
+      status: "Pending",
+      user: { $in: employeeIds },
+    })
       .populate("user", "firstName lastName email")
       .populate("leaveType", "name")
       .sort({ createdAt: -1 });
 
-    const formatted = (leaves || []).map((l) => {
+    const formatted = leaves.map((l) => {
       const start = new Date(l.start);
       const end = new Date(l.end);
+
       const leaveDays =
         l.days || Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
@@ -202,39 +120,41 @@ export const getPendingLeaves = async (req, res) => {
 };
 
 // ============================
-// ✅ UPDATE LEAVE STATUS (APPROVE/REJECT)
+// ✅ UPDATE LEAVE STATUS (SECURED FOR MANAGER)
 // ============================
 export const updateLeaveStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { action } = req.body;
-    const approverId = getUserId(req);
+    const managerId = getUserId(req);
 
     if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({ message: "Invalid action" });
     }
 
-    const leave = await Leave.findById(id);
+    const leave = await Leave.findById(id).populate("user");
 
     if (!leave) {
       return res.status(404).json({ message: "Leave not found" });
     }
 
-    const newStatus = action === "approve" ? "Approved" : "Rejected";
+    // 🔐 SECURITY: ensure employee belongs to this manager
+    if (leave.user.manager?.toString() !== managerId.toString()) {
+      return res.status(403).json({
+        message: "Not authorized to approve this leave",
+      });
+    }
 
-    // ============================
-    // ✅ PREVENT DOUBLE APPROVAL
-    // ============================
     if (leave.status === "Approved") {
       return res.status(400).json({ message: "Leave already approved" });
     }
 
-    // ============================
-    // ✅ ONLY DEDUCT IF APPROVED
-    // ============================
+    const newStatus = action === "approve" ? "Approved" : "Rejected";
+
+    // ✅ Deduct ONLY when approved
     if (newStatus === "Approved") {
       const entitlement = await Entitlement.findOne({
-        user: leave.user,
+        user: leave.user._id,
         leaveType: leave.leaveType,
       });
 
@@ -256,7 +176,7 @@ export const updateLeaveStatus = async (req, res) => {
 
     const updatedLeave = await Leave.findByIdAndUpdate(
       id,
-      { status: newStatus, approvedBy: approverId },
+      { status: newStatus, approvedBy: managerId },
       { new: true }
     )
       .populate("user", "firstName lastName email")
@@ -272,4 +192,3 @@ export const updateLeaveStatus = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-
