@@ -241,3 +241,48 @@ export const getMyLeaves = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+export const getUserLeaveTypes = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id || req.user;
+
+    const entitlements = await Entitlement.find({ user: userId })
+      .populate("leaveType", "name totalDays");
+
+    return res.json(entitlements || []);
+  } catch (err) {
+    console.error("GET USER LEAVE TYPES ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getUserLeaveHistory = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id || req.user;
+
+    const leaves = await Leave.find({ user: userId })
+      .populate("leaveType", "name")
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    const formatted = leaves.map((l) => ({
+      id: l._id,
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
+      approvedBy: l.approvedBy
+        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
+        : "-",
+      attachment: l.attachment,
+      createdAt: l.createdAt,
+    }));
+
+    return res.json(formatted);
+  } catch (err) {
+    console.error("GET USER LEAVE HISTORY ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
