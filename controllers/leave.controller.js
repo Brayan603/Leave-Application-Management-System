@@ -223,3 +223,21 @@ export const getLeaveTypes = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+// ============================
+// ✅ GET MY LEAVES
+// ============================
+export const getMyLeaves = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id || req.user;
+
+    const leaves = await Leave.find({ user: userId })
+      .populate("leaveType", "name")
+      .sort({ createdAt: -1 });
+
+    return res.json(leaves || []);
+  } catch (err) {
+    console.error("GET MY LEAVES ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
