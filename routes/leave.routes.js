@@ -7,46 +7,41 @@ import {
   getMyLeaves,
   getPendingLeaves,
   updateLeaveStatus,
+  getUserLeaveTypes,
+  getUserLeaveHistory, // ✅ ADD THIS
 } from "../controllers/leave.controller.js";
 
 import { protect, requireManager } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-// ============================
-// 📁 MULTER CONFIG
-// ============================
+// multer setup
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + file.originalname;
-    cb(null, uniqueName);
-  },
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) =>
+    cb(null, Date.now() + "-" + file.originalname),
 });
 
 const upload = multer({ storage });
 
-// ============================
-// 📌 ROUTES
-// ============================
-
-// Leave types (public or authenticated)
+// routes
 router.get("/types", getLeaveTypes);
 
-// My leaves (employee)
 router.get("/my-leaves", protect, getMyLeaves);
 
-// Apply leave
+// 🔥 entitlement
+router.get("/my-leave-types", protect, getUserLeaveTypes);
+
+// 🔥 HISTORY (IMPORTANT)
+router.get("/history", protect, getUserLeaveHistory);
+
 router.post("/apply", protect, upload.single("attachment"), applyLeave);
 
-// Manager only
 router.get("/pending", protect, requireManager, getPendingLeaves);
+
 router.put("/:id/status", protect, requireManager, updateLeaveStatus);
 
 export default router;
-
 
 
 
