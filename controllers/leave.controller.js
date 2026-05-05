@@ -24,6 +24,9 @@ const isSameId = (a, b) => {
 // ============================
 export const applyLeave = async (req, res) => {
   try {
+    
+    console.log("LOGGED IN USER:", req.user);
+    
     const userId = getUserId(req);
     const { type, start, end, days, reason } = req.body;
     const attachment = req.file ? req.file.filename : null;
