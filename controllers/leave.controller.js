@@ -210,3 +210,16 @@ export const getAllLeaves = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+// ============================
+// ✅ GET LEAVE TYPES
+// ============================
+export const getLeaveTypes = async (req, res) => {
+  try {
+    const leaveTypes = await LeaveType.find();
+    return res.json(leaveTypes || []);
+  } catch (err) {
+    console.error("GET LEAVE TYPES ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
