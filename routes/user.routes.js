@@ -1,8 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
-import { protectAdmin } from "../middleware/auth.middleware.js";
-import { protect } from "../middleware/auth.middleware.js"; // 🔥 for logged-in users
+import { protectAdmin, protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
@@ -19,6 +18,7 @@ router.get("/", protectAdmin, async (req, res) => {
         name: `${u.firstName} ${u.lastName}`,
         email: u.email,
         role: u.role,
+        manager: u.manager,
       }))
     );
   } catch (err) {
@@ -33,10 +33,9 @@ router.get("/my-employees", protect, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || req.user;
 
-    // 🔥 ONLY employees under this manager
     const employees = await User.find({
       manager: managerId,
-      role: "employee", // ensures only employees
+      role: "employee",
     });
 
     res.json(
@@ -54,21 +53,38 @@ router.get("/my-employees", protect, async (req, res) => {
 });
 
 // ============================
-// ✅ CREATE USER (ADMIN ONLY)
+// 🔥 CREATE USER (FIXED LOGIC)
 // ============================
 router.post("/", protectAdmin, async (req, res) => {
   try {
-    const { firstName, lastName, email, password, role, manager } = req.body;
+    let { firstName, lastName, email, password, role, manager } = req.body;
 
     if (!firstName || !lastName || !email || !password || !role) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
     const existingUser = await User.findOne({ email: email.trim() });
-    if (existingUser)
+    if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
+    }
 
     const hashedPassword = await bcrypt.hash(password.trim(), 10);
+
+    // ============================
+    // 🔥 STRICT ROLE RULES
+    // ============================
+
+    // ❌ Managers should NEVER have a manager
+    if (role === "manager") {
+      manager = null;
+    }
+
+    // ❌ Employees MUST have a manager
+    if (role === "employee" && !manager) {
+      return res.status(400).json({
+        message: "Employee must be assigned a manager",
+      });
+    }
 
     const user = await User.create({
       firstName,
@@ -76,7 +92,7 @@ router.post("/", protectAdmin, async (req, res) => {
       email: email.trim(),
       password: hashedPassword,
       role,
-      manager: manager || null, // 🔥 allow admin to assign manager
+      manager: role === "employee" ? manager : null,
     });
 
     res.status(201).json({
@@ -87,6 +103,7 @@ router.post("/", protectAdmin, async (req, res) => {
       manager: user.manager,
     });
   } catch (err) {
+    console.error("CREATE USER ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 });
