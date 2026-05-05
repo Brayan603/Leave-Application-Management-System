@@ -192,3 +192,21 @@ export const updateLeaveStatus = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+// ============================
+// ✅ GET ALL LEAVES (ADMIN)
+// ============================
+export const getAllLeaves = async (req, res) => {
+  try {
+    const leaves = await Leave.find()
+      .populate("user", "firstName lastName email")
+      .populate("leaveType", "name")
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    return res.json(leaves || []);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
