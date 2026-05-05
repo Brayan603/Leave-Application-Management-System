@@ -76,7 +76,7 @@ export const applyLeave = async (req, res) => {
 };
 
 // ============================
-// ✅ GET PENDING LEAVES (FIXED MANAGER FILTER)
+// ✅ GET PENDING LEAVES
 // ============================
 export const getPendingLeaves = async (req, res) => {
   try {
@@ -86,7 +86,6 @@ export const getPendingLeaves = async (req, res) => {
       return res.status(401).json({ message: "User not authenticated" });
     }
 
-    // 🔥 FIX: ensure ObjectId + strict role filtering
     const employees = await User.find({
       manager: new mongoose.Types.ObjectId(managerId),
       role: "employee",
@@ -125,13 +124,13 @@ export const getPendingLeaves = async (req, res) => {
 
     return res.json(formatted);
   } catch (err) {
-    console.error("PENDING LEAVES ERROR:", err);
+    console.error("PENDING ERROR:", err);
     return res.status(500).json({ message: "Error fetching pending leaves" });
   }
 };
 
 // ============================
-// ✅ UPDATE LEAVE STATUS (STRICT MANAGER CHECK)
+// ✅ UPDATE LEAVE STATUS
 // ============================
 export const updateLeaveStatus = async (req, res) => {
   try {
@@ -149,27 +148,16 @@ export const updateLeaveStatus = async (req, res) => {
       return res.status(404).json({ message: "Leave not found" });
     }
 
-    // 🔥 FIX: ensure employee has manager
     if (!leave.user?.manager) {
-      return res.status(403).json({
-        message: "Employee has no manager assigned",
-      });
+      return res.status(403).json({ message: "Employee has no manager" });
     }
 
-    // 🔥 STRICT CHECK
     if (!isSameId(leave.user.manager, managerId)) {
-      return res.status(403).json({
-        message: "Not authorized to manage this leave",
-      });
-    }
-
-    if (leave.status === "Approved") {
-      return res.status(400).json({ message: "Leave already approved" });
+      return res.status(403).json({ message: "Not authorized" });
     }
 
     const newStatus = action === "approve" ? "Approved" : "Rejected";
 
-    // deduct only if approved
     if (newStatus === "Approved") {
       const entitlement = await Entitlement.findOne({
         user: leave.user._id,
@@ -184,7 +172,7 @@ export const updateLeaveStatus = async (req, res) => {
 
       if (leave.days > remaining) {
         return res.status(400).json({
-          message: `Not enough leave balance. Remaining: ${remaining}`,
+          message: `Not enough balance. Remaining: ${remaining}`,
         });
       }
 
@@ -194,15 +182,9 @@ export const updateLeaveStatus = async (req, res) => {
 
     const updated = await Leave.findByIdAndUpdate(
       id,
-      {
-        status: newStatus,
-        approvedBy: managerId,
-      },
+      { status: newStatus, approvedBy: managerId },
       { new: true }
-    )
-      .populate("user", "firstName lastName email")
-      .populate("leaveType", "name")
-      .populate("approvedBy", "firstName lastName email");
+    );
 
     return res.json({
       message: `Leave ${newStatus.toLowerCase()} successfully`,
@@ -215,7 +197,7 @@ export const updateLeaveStatus = async (req, res) => {
 };
 
 // ============================
-// OTHER FUNCTIONS (UNCHANGED)
+// 📌 GET LEAVE TYPES
 // ============================
 export const getLeaveTypes = async (req, res) => {
   try {
@@ -226,6 +208,9 @@ export const getLeaveTypes = async (req, res) => {
   }
 };
 
+// ============================
+// 📌 GET MY LEAVES
+// ============================
 export const getMyLeaves = async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -236,6 +221,58 @@ export const getMyLeaves = async (req, res) => {
 
     return res.json(leaves || []);
   } catch {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ============================
+// 📌 GET USER LEAVE TYPES (ENTITLEMENTS)
+// ============================
+export const getUserLeaveTypes = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+
+    const data = await Entitlement.find({ user: userId }).populate(
+      "leaveType",
+      "name totalDays"
+    );
+
+    return res.json(data || []);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ============================
+// 📌 GET USER LEAVE HISTORY
+// ============================
+export const getUserLeaveHistory = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+
+    const leaves = await Leave.find({ user: userId })
+      .populate("leaveType", "name")
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    const formatted = leaves.map((l) => ({
+      id: l._id,
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
+      approvedBy: l.approvedBy
+        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
+        : "-",
+      createdAt: l.createdAt,
+    }));
+
+    return res.json(formatted);
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({ message: "Server error" });
   }
 };
