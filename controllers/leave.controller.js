@@ -78,38 +78,40 @@ export const applyLeave = async (req, res) => {
   }
 };
 
-//getPendingLeaves//
-
- export const getPendingLeaves = async (req, res) => {
+export const getPendingLeaves = async (req, res) => {
   try {
     console.log("🔥 GET PENDING LEAVES HIT");
+    console.log("LOGGED IN USER:", req.user);
 
-    // ✅ SAFE: always rely on decoded id from authMiddleware
-    const managerId = req.user?.id || req.user?._id;
+    const managerId = new mongoose.Types.ObjectId(
+      req.user?.id || req.user?._id
+    );
 
-    if (!managerId) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-
-    // Get employees under this manager
+    // 🔍 DEBUG: check employees under this manager
     const employees = await User.find({
       manager: managerId,
-      role: "employee",
-    }).select("_id");
+    });
+
+    console.log("EMPLOYEES FOUND:", employees);
 
     const employeeIds = employees.map((e) => e._id);
 
+    // ⚠️ If no employees → return early
     if (employeeIds.length === 0) {
+      console.log("❌ No employees found for this manager");
       return res.status(200).json([]);
     }
 
+    // 🔥 FETCH LEAVES (CASE-INSENSITIVE STATUS)
     const leaves = await Leave.find({
-      status: "Pending",
       user: { $in: employeeIds },
+      status: { $regex: /^pending$/i },
     })
       .populate("user", "firstName lastName email")
       .populate("leaveType", "name")
       .sort({ createdAt: -1 });
+
+    console.log("LEAVES FOUND:", leaves);
 
     const formatted = leaves.map((l) => ({
       id: l._id,
@@ -124,7 +126,6 @@ export const applyLeave = async (req, res) => {
       createdAt: l.createdAt,
     }));
 
-    // 🔥 IMPORTANT: prevent 304 caching issues
     return res
       .status(200)
       .set("Cache-Control", "no-store")
