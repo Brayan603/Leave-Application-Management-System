@@ -249,4 +249,50 @@ export const getUserLeaveHistoryById = async (req, res) => {
   }
 };
 
+// ============================
+// 📌 GET ALL LEAVES FOR MANAGER'S TEAM
+// ============================
+export const getManagerLeaves = async (req, res) => {
+  try {
+    const managerId = getUserId(req);
+    if (!managerId) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    // Find employees under this manager
+    const employees = await User.find({ manager: managerId, role: "employee" }).select("_id");
+    const employeeIds = employees.map((e) => e._id);
+
+    if (employeeIds.length === 0) {
+      return res.json([]);
+    }
+
+    // Get all leaves for those employees
+    const leaves = await Leave.find({ user: { $in: employeeIds } })
+      .populate("user", "firstName lastName email")
+      .populate("leaveType", "name")
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ start: 1 });
+
+    const formatted = leaves.map((l) => ({
+      id: l._id,
+      employee: l.user ? `${l.user.firstName} ${l.user.lastName}` : "Unknown",
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
+      approvedBy: l.approvedBy
+        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
+        : "-",
+      createdAt: l.createdAt,
+    }));
+
+    return res.json(formatted);
+  } catch (err) {
+    console.error("GET MANAGER LEAVES ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
 
