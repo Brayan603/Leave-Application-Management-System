@@ -78,62 +78,21 @@ export const applyLeave = async (req, res) => {
   }
 };
 
+// ============================
+// ✅ pending leaves
+// ============================
 export const getPendingLeaves = async (req, res) => {
   try {
-    console.log("🔥 GET PENDING LEAVES HIT");
-    console.log("LOGGED IN USER:", req.user);
-
-    const managerId = new mongoose.Types.ObjectId(
-      req.user?.id || req.user?._id
-    );
-
-    // 🔍 DEBUG: check employees under this manager
-    const employees = await User.find({
-      manager: managerId,
-    });
-
-    console.log("EMPLOYEES FOUND:", employees);
-
-    const employeeIds = employees.map((e) => e._id);
-
-    // ⚠️ If no employees → return early
-    if (employeeIds.length === 0) {
-      console.log("❌ No employees found for this manager");
-      return res.status(200).json([]);
-    }
-
-    // 🔥 FETCH LEAVES (CASE-INSENSITIVE STATUS)
-    const leaves = await Leave.find({
-      user: { $in: employeeIds },
-      status: { $regex: /^pending$/i },
-    })
+    const leaves = await Leave.find()
       .populate("user", "firstName lastName email")
-      .populate("leaveType", "name")
-      .sort({ createdAt: -1 });
+      .populate("leaveType", "name");
 
-    console.log("LEAVES FOUND:", leaves);
+    console.log("ALL LEAVES:", leaves);
 
-    const formatted = leaves.map((l) => ({
-      id: l._id,
-      employee: `${l.user?.firstName || ""} ${l.user?.lastName || ""}`.trim(),
-      email: l.user?.email || "",
-      type: l.leaveType?.name || "Unknown",
-      start: l.start,
-      end: l.end,
-      leaveDays: l.days,
-      reason: l.reason,
-      status: l.status,
-      createdAt: l.createdAt,
-    }));
-
-    return res
-      .status(200)
-      .set("Cache-Control", "no-store")
-      .json(formatted);
-
+    res.json(leaves);
   } catch (err) {
-    console.error("PENDING ERROR:", err);
-    return res.status(500).json({ message: "Error fetching pending leaves" });
+    console.error(err);
+    res.status(500).json({ message: "Error" });
   }
 };
 
