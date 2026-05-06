@@ -10,7 +10,16 @@ const getUserId = (req) => req.user?.id || req.user?._id || req.user;
 // ============================
 export const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, role, manager } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      role,
+      manager,
+      organization,   // ✅ added
+      department      // ✅ added
+    } = req.body;
 
     const currentUserId = getUserId(req);
     const currentUser = await User.findById(currentUserId);
@@ -36,10 +45,8 @@ export const createUser = async (req, res) => {
     let assignedManager = null;
 
     if (currentUser.role === "manager") {
-      // ✅ Manager creates → auto assign himself
       assignedManager = currentUserId;
     } else if (currentUser.role === "admin") {
-      // ✅ Admin can assign manager manually
       assignedManager = manager || null;
     }
 
@@ -50,7 +57,11 @@ export const createUser = async (req, res) => {
       email: email.trim(),
       password: hashedPassword,
       role,
-      manager: assignedManager, // 🔥 KEY FIELD
+      manager: assignedManager,
+
+      // ✅ IMPORTANT FIX
+      organization: organization || null,
+      department: department || null,
     });
 
     res.status(201).json({
@@ -61,6 +72,8 @@ export const createUser = async (req, res) => {
         email: user.email,
         role: user.role,
         manager: user.manager,
+        organization: user.organization, // optional but helpful
+        department: user.department,     // optional but helpful
       },
     });
 
