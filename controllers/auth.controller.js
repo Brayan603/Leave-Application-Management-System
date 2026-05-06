@@ -5,52 +5,59 @@ import jwt from "jsonwebtoken";
 
 export const loginUser = async (req, res) => {
   try {
-    // ✅ Check if req.body exists
     if (!req.body) {
       return res.status(400).json({ message: "Request body is missing" });
     }
 
     let { email, password } = req.body;
 
-    // ✅ Validate input
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    email = email.trim();
+    email = email.trim().toLowerCase();
     password = password.trim();
 
-    // 1️⃣ Find user by email
+    // 1️⃣ Find user
     const user = await User.findOne({ email });
+
     if (!user) {
-      return res.status(401).json({ message: "Invalid Email" });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
     // 2️⃣ Compare password
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid Password" });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // 3️⃣ Generate JWT
+    // 3️⃣ Generate token
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      {
+        id: user._id,      // ✅ matches middleware
+        role: user.role,   // useful for role checks
+      },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      {
+        expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+      }
     );
 
-    // 4️⃣ Respond with token and user info
+    // 4️⃣ Send response
     res.status(200).json({
+      message: "Login successful",
       token,
       user: {
         id: user._id,
-        name: `${user.firstName} ${user.lastName}`,
+        firstName: user.firstName,
+        lastName: user.lastName,
         email: user.email,
         role: user.role,
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("LOGIN ERROR:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
