@@ -81,18 +81,46 @@ export const applyLeave = async (req, res) => {
 // ============================
 // ✅ pending leaves
 // ============================
-export const getPendingLeaves = async (req, res) => {
+
+ export const getPendingLeaves = async (req, res) => {
   try {
-    const leaves = await Leave.find()
+    console.log("🔥 GET PENDING LEAVES HIT");
+
+    const managerId = req.user?._id || req.user?.id;
+
+    if (!managerId) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    // 1️⃣ Get employees under this manager
+    const employees = await User.find({
+      manager: managerId,
+      role: "employee",
+    }).select("_id");
+
+    const employeeIds = employees.map((e) => e._id);
+
+    console.log("👥 Employees under manager:", employeeIds);
+
+    if (employeeIds.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // 2️⃣ Get ONLY pending leaves for those employees
+    const leaves = await Leave.find({
+      user: { $in: employeeIds },
+      status: { $regex: /^pending$/i }, // case-insensitive fix
+    })
       .populate("user", "firstName lastName email")
-      .populate("leaveType", "name");
+      .populate("leaveType", "name")
+      .sort({ createdAt: -1 });
 
-    console.log("ALL LEAVES:", leaves);
+    console.log("📄 Pending leaves:", leaves.length);
 
-    res.json(leaves);
+    return res.json(leaves);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error" });
+    console.error("PENDING LEAVES ERROR:", err);
+    return res.status(500).json({ message: "Error fetching pending leaves" });
   }
 };
 
