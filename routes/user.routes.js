@@ -110,7 +110,41 @@ router.post("/", protectAdmin, async (req, res) => {
 
 export default router;
 
+// ============================
+// 👤 GET SINGLE EMPLOYEE + LEAVES
+// ============================
+import Leave from "../models/Leave.js"; // make sure path is correct
 
+router.get("/employee/:id", protect, async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+
+    const employee = await User.findById(employeeId)
+      .populate("department", "name")
+      .select("-password");
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    const leaves = await Leave.find({ user: employeeId })
+      .sort({ createdAt: -1 });
+
+    res.json({
+      employee: {
+        id: employee._id,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        email: employee.email,
+        department: employee.department,
+      },
+      leaves,
+    });
+  } catch (err) {
+    console.error("EMPLOYEE DETAIL ERROR:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 
 
