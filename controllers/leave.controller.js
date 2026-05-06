@@ -216,3 +216,37 @@ export const getUserLeaveHistory = async (req, res) => {
   }
 };
 
+// ============================
+// 📌 GET LEAVE HISTORY BY EMPLOYEE ID (Manager/Admin)
+// ============================
+export const getUserLeaveHistoryById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const leaves = await Leave.find({ user: id })
+      .populate("leaveType", "name")
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    const formatted = leaves.map((l) => ({
+      id: l._id,
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
+      approvedBy: l.approvedBy
+        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
+        : "-",
+      createdAt: l.createdAt,
+    }));
+
+    return res.json(formatted);
+  } catch (err) {
+    console.error("GET USER LEAVE HISTORY BY ID ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
