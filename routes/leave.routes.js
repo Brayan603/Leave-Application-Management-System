@@ -39,6 +39,7 @@ router.post("/apply", protect, upload.single("attachment"), applyLeave);
 router.get("/pending", protect, requireManager, getPendingLeaves);
 
 router.put("/:id/status", protect, requireManager, updateLeaveStatus);
+router.get("/manager/leaves", protect, requireManager, getManagerLeaves);
 
 export default router;
 
