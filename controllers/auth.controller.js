@@ -18,25 +18,23 @@ export const loginUser = async (req, res) => {
     email = email.trim().toLowerCase();
     password = password.trim();
 
-    // 1️⃣ Find user
+    // 🔥 IMPORTANT: login must NEVER depend on system state
     const user = await User.findOne({ email });
 
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // 2️⃣ Compare password
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // 3️⃣ Generate token
     const token = jwt.sign(
       {
-        id: user._id,      // ✅ matches middleware
-        role: user.role,   // useful for role checks
+        id: user._id,
+        role: user.role,
       },
       process.env.JWT_SECRET,
       {
@@ -44,8 +42,7 @@ export const loginUser = async (req, res) => {
       }
     );
 
-    // 4️⃣ Send response
-    res.status(200).json({
+    return res.status(200).json({
       message: "Login successful",
       token,
       user: {
@@ -56,8 +53,9 @@ export const loginUser = async (req, res) => {
         role: user.role,
       },
     });
+
   } catch (error) {
     console.error("LOGIN ERROR:", error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
