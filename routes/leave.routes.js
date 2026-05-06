@@ -1,6 +1,5 @@
 import express from "express";
 import multer from "multer";
-
 import {
   applyLeave,
   getLeaveTypes,
@@ -24,17 +23,11 @@ const upload = multer({ storage });
 
 // routes
 router.get("/types", getLeaveTypes);
-
 router.get("/my-leaves", authMiddleware, protect, getMyLeaves);
-
 router.get("/my-leave-types", authMiddleware, protect, getUserLeaveTypes);
-
 router.get("/history", authMiddleware, protect, getUserLeaveHistory);
-
 router.post("/apply", authMiddleware, protect, upload.single("attachment"), applyLeave);
-
 router.get("/pending", authMiddleware, protect, requireManager, getPendingLeaves);
-
 router.put("/:id/status", authMiddleware, protect, requireManager, updateLeaveStatus);
 
 export default router;
