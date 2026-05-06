@@ -24,9 +24,6 @@ const isSameId = (a, b) => {
 // ============================
 export const applyLeave = async (req, res) => {
   try {
-    
-    console.log("LOGGED IN USER:", req.user);
-    
     const userId = getUserId(req);
     const { type, start, end, days, reason } = req.body;
     const attachment = req.file ? req.file.filename : null;
@@ -50,7 +47,6 @@ export const applyLeave = async (req, res) => {
     }
 
     const remaining = entitlement.totalDays - entitlement.usedDays;
-
     if (Number(days) > remaining) {
       return res.status(400).json({
         message: `Insufficient balance. Remaining: ${remaining}`,
@@ -68,10 +64,7 @@ export const applyLeave = async (req, res) => {
       status: "Pending",
     });
 
-    return res.status(201).json({
-      message: "Leave applied successfully",
-      leave,
-    });
+    return res.status(201).json({ message: "Leave applied successfully", leave });
   } catch (err) {
     console.error("APPLY LEAVE ERROR:", err);
     return res.status(500).json({ message: "Server error" });
@@ -79,43 +72,29 @@ export const applyLeave = async (req, res) => {
 };
 
 // ============================
-// ✅ pending leaves
+// ✅ GET PENDING LEAVES (Manager only)
 // ============================
-
- export const getPendingLeaves = async (req, res) => {
+export const getPendingLeaves = async (req, res) => {
   try {
-    console.log("🔥 GET PENDING LEAVES HIT");
-
-    const managerId = req.user?._id || req.user?.id;
-
+    const managerId = getUserId(req);
     if (!managerId) {
       return res.status(401).json({ message: "Not authorized" });
     }
 
-    // 1️⃣ Get employees under this manager
-    const employees = await User.find({
-      manager: managerId,
-      role: "employee",
-    }).select("_id");
-
+    const employees = await User.find({ manager: managerId, role: "employee" }).select("_id");
     const employeeIds = employees.map((e) => e._id);
-
-    console.log("👥 Employees under manager:", employeeIds);
 
     if (employeeIds.length === 0) {
       return res.status(200).json([]);
     }
 
-    // 2️⃣ Get ONLY pending leaves for those employees
     const leaves = await Leave.find({
       user: { $in: employeeIds },
-      status: { $regex: /^pending$/i }, // case-insensitive fix
+      status: { $regex: /^pending$/i },
     })
       .populate("user", "firstName lastName email")
       .populate("leaveType", "name")
       .sort({ createdAt: -1 });
-
-    console.log("📄 Pending leaves:", leaves.length);
 
     return res.json(leaves);
   } catch (err) {
@@ -138,53 +117,28 @@ export const updateLeaveStatus = async (req, res) => {
     }
 
     const leave = await Leave.findById(id).populate("user");
+    if (!leave) return res.status(404).json({ message: "Leave not found" });
 
-    if (!leave) {
-      return res.status(404).json({ message: "Leave not found" });
-    }
-
-    if (!leave.user?.manager) {
-      return res.status(403).json({ message: "Employee has no manager" });
-    }
-
-    if (!isSameId(leave.user.manager, managerId)) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
+    if (!leave.user?.manager) return res.status(403).json({ message: "Employee has no manager" });
+    if (!isSameId(leave.user.manager, managerId)) return res.status(403).json({ message: "Not authorized" });
 
     const newStatus = action === "approve" ? "Approved" : "Rejected";
 
     if (newStatus === "Approved") {
-      const entitlement = await Entitlement.findOne({
-        user: leave.user._id,
-        leaveType: leave.leaveType,
-      });
-
-      if (!entitlement) {
-        return res.status(400).json({ message: "Entitlement not found" });
-      }
+      const entitlement = await Entitlement.findOne({ user: leave.user._id, leaveType: leave.leaveType });
+      if (!entitlement) return res.status(400).json({ message: "Entitlement not found" });
 
       const remaining = entitlement.totalDays - entitlement.usedDays;
-
       if (leave.days > remaining) {
-        return res.status(400).json({
-          message: `Not enough balance. Remaining: ${remaining}`,
-        });
+        return res.status(400).json({ message: `Not enough balance. Remaining: ${remaining}` });
       }
 
       entitlement.usedDays += leave.days;
       await entitlement.save();
     }
 
-    const updated = await Leave.findByIdAndUpdate(
-      id,
-      { status: newStatus, approvedBy: managerId },
-      { new: true }
-    );
-
-    return res.json({
-      message: `Leave ${newStatus.toLowerCase()} successfully`,
-      leave: updated,
-    });
+    const updated = await Leave.findByIdAndUpdate(id, { status: newStatus, approvedBy: managerId }, { new: true });
+    return res.json({ message: `Leave ${newStatus.toLowerCase()} successfully`, leave: updated });
   } catch (err) {
     console.error("UPDATE ERROR:", err);
     return res.status(500).json({ message: "Server error" });
@@ -209,11 +163,9 @@ export const getLeaveTypes = async (req, res) => {
 export const getMyLeaves = async (req, res) => {
   try {
     const userId = getUserId(req);
-
     const leaves = await Leave.find({ user: userId })
       .populate("leaveType", "name")
       .sort({ createdAt: -1 });
-
     return res.json(leaves || []);
   } catch {
     return res.status(500).json({ message: "Server error" });
@@ -221,17 +173,12 @@ export const getMyLeaves = async (req, res) => {
 };
 
 // ============================
-// 📌 GET USER LEAVE TYPES (ENTITLEMENTS)
+// 📌 GET USER LEAVE TYPES (Entitlements)
 // ============================
 export const getUserLeaveTypes = async (req, res) => {
   try {
     const userId = getUserId(req);
-
-    const data = await Entitlement.find({ user: userId }).populate(
-      "leaveType",
-      "name totalDays"
-    );
-
+    const data = await Entitlement.find({ user: userId }).populate("leaveType", "name totalDays");
     return res.json(data || []);
   } catch (err) {
     console.error(err);
@@ -245,7 +192,6 @@ export const getUserLeaveTypes = async (req, res) => {
 export const getUserLeaveHistory = async (req, res) => {
   try {
     const userId = getUserId(req);
-
     const leaves = await Leave.find({ user: userId })
       .populate("leaveType", "name")
       .populate("approvedBy", "firstName lastName email")
@@ -259,9 +205,7 @@ export const getUserLeaveHistory = async (req, res) => {
       days: l.days,
       reason: l.reason,
       status: l.status,
-      approvedBy: l.approvedBy
-        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
-        : "-",
+      approvedBy: l.approvedBy ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}` : "-",
       createdAt: l.createdAt,
     }));
 
@@ -271,3 +215,4 @@ export const getUserLeaveHistory = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
