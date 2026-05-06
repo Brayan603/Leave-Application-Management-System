@@ -26,6 +26,7 @@ router.get("/types", getLeaveTypes);
 router.get("/my-leaves", authMiddleware, protect, getMyLeaves);
 router.get("/my-leave-types", authMiddleware, protect, getUserLeaveTypes);
 router.get("/history", authMiddleware, protect, getUserLeaveHistory);
+router.get("/history/:id", authMiddleware, protect, requireManager, getUserLeaveHistoryById);
 router.post("/apply", authMiddleware, protect, upload.single("attachment"), applyLeave);
 router.get("/pending", authMiddleware, protect, requireManager, getPendingLeaves);
 router.put("/:id/status", authMiddleware, protect, requireManager, updateLeaveStatus);
