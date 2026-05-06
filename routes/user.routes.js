@@ -1,12 +1,13 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import Leave from "../models/Leave.js";
 import { protectAdmin, protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 // ============================
-// ✅ GET ALL USERS (ADMIN ONLY)
+// GET ALL USERS (ADMIN)
 // ============================
 router.get("/", protectAdmin, async (req, res) => {
   try {
@@ -27,7 +28,7 @@ router.get("/", protectAdmin, async (req, res) => {
 });
 
 // ============================
-// ✅ GET MY EMPLOYEES (MANAGER)
+// GET MY EMPLOYEES
 // ============================
 router.get("/my-employees", protect, async (req, res) => {
   try {
@@ -47,74 +48,14 @@ router.get("/my-employees", protect, async (req, res) => {
       }))
     );
   } catch (err) {
-    console.error("MY EMPLOYEES ERROR:", err);
+    console.error(err);
     res.status(500).json({ message: err.message });
   }
 });
 
 // ============================
-// 🔥 CREATE USER (FIXED LOGIC)
+// GET SINGLE EMPLOYEE + LEAVES
 // ============================
-router.post("/", protectAdmin, async (req, res) => {
-  try {
-    let { firstName, lastName, email, password, role, manager } = req.body;
-
-    if (!firstName || !lastName || !email || !password || !role) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
-
-    const existingUser = await User.findOne({ email: email.trim() });
-    if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password.trim(), 10);
-
-    // ============================
-    // 🔥 STRICT ROLE RULES
-    // ============================
-
-    // ❌ Managers should NEVER have a manager
-    if (role === "manager") {
-      manager = null;
-    }
-
-    // ❌ Employees MUST have a manager
-    if (role === "employee" && !manager) {
-      return res.status(400).json({
-        message: "Employee must be assigned a manager",
-      });
-    }
-
-    const user = await User.create({
-      firstName,
-      lastName,
-      email: email.trim(),
-      password: hashedPassword,
-      role,
-      manager: role === "employee" ? manager : null,
-    });
-
-    res.status(201).json({
-      id: user._id,
-      name: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      role: user.role,
-      manager: user.manager,
-    });
-  } catch (err) {
-    console.error("CREATE USER ERROR:", err);
-    res.status(500).json({ message: err.message });
-  }
-});
-
-export default router;
-
-// ============================
-// 👤 GET SINGLE EMPLOYEE + LEAVES
-// ============================
-import Leave from "../models/Leave.js"; // make sure path is correct
-
 router.get("/employee/:id", protect, async (req, res) => {
   try {
     const employeeId = req.params.id;
@@ -127,8 +68,9 @@ router.get("/employee/:id", protect, async (req, res) => {
       return res.status(404).json({ message: "Employee not found" });
     }
 
-    const leaves = await Leave.find({ user: employeeId })
-      .sort({ createdAt: -1 });
+    const leaves = await Leave.find({ user: employeeId }).sort({
+      createdAt: -1,
+    });
 
     res.json({
       employee: {
@@ -145,6 +87,8 @@ router.get("/employee/:id", protect, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+export default router;
 
 
 
