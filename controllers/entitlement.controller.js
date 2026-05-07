@@ -103,35 +103,53 @@ export const getAllEntitlements = async (req, res) => {
 // ============================
 // ✅ Get user entitlements (with accrual)
 // ============================
-export const getUserEntitlements = async (req, res) => {
-  try {
-    const { userId } = req.params;
+export const getUserEntitlements =
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
 
-    let data = await Entitlement.find({ user: userId })
-      .populate("leaveType", "name");
+      let data =
+        await Entitlement.find({
+          user: userId,
+        }).populate(
+          "leaveType",
+          "name"
+        );
 
-    // Apply accrual logic for Annual Leave
-    data = data.map((e) => {
-      if (e.leaveType?.name === "Annual Leave") {
-        const today = new Date();
-        const monthsWorked = differenceInMonths(today, e.startDate || today);
+      data = data.map((e) => {
+        // accrual leave
+        if (e.type === "accrual") {
+          const today = new Date();
 
-        const accrualRate = 1.67; // days per month
-        const maxDays = 20;       // annual cap
+          const monthsWorked =
+            differenceInMonths(
+              today,
+              e.startDate || today
+            );
 
-        const accrued = Math.min(monthsWorked * accrualRate, maxDays);
+          const accrued =
+            monthsWorked *
+            e.accrualRate;
 
-        // dynamically override totalDays
-        e.totalDays = accrued;
-      }
-      return e;
-    });
+          // limit to max days
+          e.totalDays = Math.min(
+            accrued,
+            e.maxDays
+          );
+        }
 
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
+        return e;
+      });
+
+      res.json(data);
+    } catch (err) {
+      console.error(err);
+
+      res.status(500).json({
+        message: err.message,
+      });
+    }
+  };
 
 // ============================
 // ✅ Update entitlement
