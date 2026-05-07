@@ -1,13 +1,18 @@
 import express from "express";
-import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import Leave from "../models/LeaveType.js";
 import { protectAdmin, protect } from "../middleware/auth.middleware.js";
+import { createUser } from "../controllers/userController.js";
 
 const router = express.Router();
 
 // ============================
-// GET ALL USERS (ADMIN)
+// CREATE USER
+// ============================
+router.post("/", protectAdmin, createUser);
+
+// ============================
+// GET ALL USERS
 // ============================
 router.get("/", protectAdmin, async (req, res) => {
   try {
@@ -54,7 +59,7 @@ router.get("/my-employees", protect, async (req, res) => {
 });
 
 // ============================
-// GET SINGLE EMPLOYEE + LEAVES
+// GET SINGLE EMPLOYEE
 // ============================
 router.get("/employee/:id", protect, async (req, res) => {
   try {
@@ -65,10 +70,14 @@ router.get("/employee/:id", protect, async (req, res) => {
       .select("-password");
 
     if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
+      return res.status(404).json({
+        message: "Employee not found",
+      });
     }
 
-    const leaves = await Leave.find({ user: employeeId }).sort({
+    const leaves = await Leave.find({
+      user: employeeId,
+    }).sort({
       createdAt: -1,
     });
 
@@ -84,7 +93,10 @@ router.get("/employee/:id", protect, async (req, res) => {
     });
   } catch (err) {
     console.error("EMPLOYEE DETAIL ERROR:", err);
-    res.status(500).json({ message: "Server error" });
+
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 });
 
