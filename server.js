@@ -21,23 +21,31 @@ const app = express();
 
 app.use(morgan("dev"));
 
-// 🔧 Fix CORS: allow frontend at localhost:3000 and credentials
-app.use(cors({
-  origin: "https://leave-management20-systems.vercel.app",  // your React app
-  credentials: true                 // allow cookies/headers
-}));
+app.use(
+  cors({
+    origin: "https://leave-management20-systems.vercel.app",
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
-// Test root route
+// ============================
+// ROOT ROUTE
+// ============================
 app.get("/", (req, res) => {
   res.send("API running successfully!");
 });
 
-// API Routes
+// ============================
+// API ROUTES
+// ============================
 app.use("/api/organizations", orgRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/user", userRouter);
+
+// ✅ FIXED HERE
+app.use("/api/users", userRouter);
+
 app.use("/api/leave", leaveRoutes);
 app.use("/api/department", departmentRoutes);
 app.use("/api/subdepartments", subDepartmentRoutes);
@@ -45,17 +53,25 @@ app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/entitlements", entitlementRoutes);
 app.use("/api/notifications", notificationRoutes);
 
-// Catch-all route
+// ============================
+// 404 HANDLER
+// ============================
 app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" });
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.originalUrl}`,
+  });
 });
 
-// ✅ START SERVER ONLY AFTER DB CONNECTS
+// ============================
+// START SERVER
+// ============================
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
     await connectDB();
+
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
@@ -66,23 +82,6 @@ const startServer = async () => {
 };
 
 startServer();
-
-
-// # Windows PowerShell
-// tasklist /FI "IMAGENAME eq node.exe"
-// # Replace <PID> with the number from tasklist
-// taskkill /PID <PID> /F
-
-
-// # Windows PowerShell
-// tasklist /FI "IMAGENAME eq node.exe"
-// # Replace <PID> with the number from tasklist
-// taskkill /PID <PID> /F
-
-// # Windows PowerShell
-// tasklist /FI "IMAGENAME eq node.exe"
-// # Replace <PID> with the number from tasklist
-// taskkill /PID <PID> /F
 
 
     
