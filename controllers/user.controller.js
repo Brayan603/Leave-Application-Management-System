@@ -42,13 +42,20 @@ export const createUser = async (req, res) => {
     // ============================
     // 🔥 MANAGER ASSIGNMENT LOGIC
     // ============================
-    let assignedManager = null;
-
-    if (currentUser.role === "manager") {
-      assignedManager = currentUserId;
-    } else if (currentUser.role === "admin") {
-      assignedManager = manager || null;
-    }
+     let assignedManager = null;
+      
+      // manager creating employee
+      if (currentUser.role === "manager") {
+        assignedManager = currentUserId;
+      }
+      
+      // admin selects manager manually
+      else if (currentUser.role === "admin") {
+        // only employees should have managers
+        if (role === "employee") {
+          assignedManager = manager || null;
+        }
+      }
 
     // 4️⃣ Create user
     const user = await User.create({
