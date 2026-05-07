@@ -102,7 +102,31 @@ router.get("/employee/:id", protect, async (req, res) => {
 
 export default router;
 
+// ============================
+// GET ALL MANAGERS
+// ============================
+router.get(
+  "/managers/list",
+  protectAdmin,
+  async (req, res) => {
+    try {
+      const managers =
+        await User.find({
+          role: "manager",
+        }).select(
+          "_id firstName lastName email"
+        );
 
+      res.json(managers);
+    } catch (err) {
+      console.error(err);
+
+      res.status(500).json({
+        message: err.message,
+      });
+    }
+  }
+);
 
 
 
