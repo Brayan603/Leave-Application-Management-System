@@ -197,8 +197,9 @@ export const getUserLeaveHistory = async (req, res) => {
       .populate("approvedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
 
-    const formatted = leaves.map((l) => ({
+      const formatted = leaves.map((l) => ({
       id: l._id,
+      userId: l.user?._id?.toString(),
       type: l.leaveType?.name || "Unknown",
       start: l.start,
       end: l.end,
