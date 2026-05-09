@@ -1,8 +1,7 @@
-const JobRole = require("../models/JobRole");
-
+import JobRole from "../models/JobRole.js";
 
 // CREATE JOB ROLE
-exports.createJobRole = async (req, res) => {
+export const createJobRole = async (req, res) => {
   try {
     const { name, department, subDepartment } = req.body;
 
@@ -37,6 +36,7 @@ exports.createJobRole = async (req, res) => {
       message: "Job role created successfully",
       data: role,
     });
+
   } catch (error) {
     console.error(error);
 
@@ -47,9 +47,8 @@ exports.createJobRole = async (req, res) => {
   }
 };
 
-
 // GET ALL JOB ROLES
-exports.getJobRoles = async (req, res) => {
+export const getJobRoles = async (req, res) => {
   try {
     const roles = await JobRole.find()
       .populate("department", "name")
@@ -61,6 +60,7 @@ exports.getJobRoles = async (req, res) => {
       count: roles.length,
       data: roles,
     });
+
   } catch (error) {
     console.error(error);
 
@@ -71,9 +71,8 @@ exports.getJobRoles = async (req, res) => {
   }
 };
 
-
 // GET JOB ROLES BY SUBDEPARTMENT
-exports.getRolesBySubDepartment = async (req, res) => {
+export const getRolesBySubDepartment = async (req, res) => {
   try {
     const { subDepartmentId } = req.params;
 
@@ -86,6 +85,7 @@ exports.getRolesBySubDepartment = async (req, res) => {
       success: true,
       data: roles,
     });
+
   } catch (error) {
     console.error(error);
 
@@ -96,18 +96,15 @@ exports.getRolesBySubDepartment = async (req, res) => {
   }
 };
 
-
 // UPDATE JOB ROLE
-exports.updateJobRole = async (req, res) => {
+export const updateJobRole = async (req, res) => {
   try {
     const { id } = req.params;
 
     const updatedRole = await JobRole.findByIdAndUpdate(
       id,
       req.body,
-      {
-        new: true,
-      }
+      { new: true }
     );
 
     if (!updatedRole) {
@@ -122,6 +119,7 @@ exports.updateJobRole = async (req, res) => {
       message: "Job role updated successfully",
       data: updatedRole,
     });
+
   } catch (error) {
     console.error(error);
 
@@ -132,9 +130,8 @@ exports.updateJobRole = async (req, res) => {
   }
 };
 
-
 // DELETE JOB ROLE
-exports.deleteJobRole = async (req, res) => {
+export const deleteJobRole = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -151,6 +148,7 @@ exports.deleteJobRole = async (req, res) => {
       success: true,
       message: "Job role deleted successfully",
     });
+
   } catch (error) {
     console.error(error);
 
