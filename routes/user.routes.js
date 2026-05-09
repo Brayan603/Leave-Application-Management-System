@@ -2,7 +2,7 @@ import express from "express";
 import User from "../models/User.js";
 import Leave from "../models/LeaveType.js";
 import { protectAdmin, protect } from "../middleware/auth.middleware.js";
-import { createUser } from "../controllers/user.controller.js";
+import { createUser, updateUser } from "../controllers/user.controller.js";
 
 const router = express.Router();
 
@@ -12,22 +12,40 @@ const router = express.Router();
 router.post("/", protectAdmin, createUser);
 
 // ============================
-// GET ALL USERS
+// UPDATE USER  ← NEW
+// ============================
+router.put("/:id", protectAdmin, updateUser);
+
+// ============================
+// GET ALL USERS  ← FIXED (returns all fields)
 // ============================
 router.get("/", protectAdmin, async (req, res) => {
   try {
-    const users = await User.find();
+    const users = await User.find()
+      .select("-password")
+      .populate("organization", "name")
+      .populate("department", "name")
+      .populate("subDepartment", "name")
+      .populate("manager", "firstName lastName email")
+      .sort({ createdAt: -1 });
 
-    res.json(
-      users.map((u) => ({
-        id: u._id,
-        name: `${u.firstName} ${u.lastName}`,
-        email: u.email,
-        role: u.role,
-        manager: u.manager,
-      }))
-    );
+    res.json(users);
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ============================
+// GET ALL MANAGERS
+// ============================
+router.get("/managers/list", protectAdmin, async (req, res) => {
+  try {
+    const managers = await User.find({ role: "manager" }).select(
+      "_id firstName lastName email"
+    );
+    res.json(managers);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -38,12 +56,10 @@ router.get("/", protectAdmin, async (req, res) => {
 router.get("/my-employees", protect, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || req.user;
-
     const employees = await User.find({
       manager: managerId,
       role: "employee",
     });
-
     res.json(
       employees.map((u) => ({
         id: u._id,
@@ -64,22 +80,15 @@ router.get("/my-employees", protect, async (req, res) => {
 router.get("/employee/:id", protect, async (req, res) => {
   try {
     const employeeId = req.params.id;
-
     const employee = await User.findById(employeeId)
       .populate("department", "name")
       .select("-password");
 
     if (!employee) {
-      return res.status(404).json({
-        message: "Employee not found",
-      });
+      return res.status(404).json({ message: "Employee not found" });
     }
 
-    const leaves = await Leave.find({
-      user: employeeId,
-    }).sort({
-      createdAt: -1,
-    });
+    const leaves = await Leave.find({ user: employeeId }).sort({ createdAt: -1 });
 
     res.json({
       employee: {
@@ -93,40 +102,11 @@ router.get("/employee/:id", protect, async (req, res) => {
     });
   } catch (err) {
     console.error("EMPLOYEE DETAIL ERROR:", err);
-
-    res.status(500).json({
-      message: "Server error",
-    });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-export default router;
-
-// ============================
-// GET ALL MANAGERS
-// ============================
-router.get(
-  "/managers/list",
-  protectAdmin,
-  async (req, res) => {
-    try {
-      const managers =
-        await User.find({
-          role: "manager",
-        }).select(
-          "_id firstName lastName email"
-        );
-
-      res.json(managers);
-    } catch (err) {
-      console.error(err);
-
-      res.status(500).json({
-        message: err.message,
-      });
-    }
-  }
-);
+export default router; // ← MOVED TO END
 
 
 
