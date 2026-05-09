@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const JobRoleSchema = new mongoose.Schema(
   {
@@ -31,4 +31,6 @@ const JobRoleSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("JobRole", JobRoleSchema);
+const JobRole = mongoose.model("JobRole", JobRoleSchema);
+
+export default JobRole;
