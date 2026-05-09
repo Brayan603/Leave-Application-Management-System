@@ -1,15 +1,14 @@
-const express = require("express");
+import express from "express";
 
 const router = express.Router();
 
-const {
+import {
   createJobRole,
   getJobRoles,
   getRolesBySubDepartment,
   updateJobRole,
   deleteJobRole,
-} = require("../controllers/jobRole.controller");
-
+} from "../controllers/jobRole.controller.js";
 
 // CREATE
 router.post("/", createJobRole);
@@ -18,10 +17,7 @@ router.post("/", createJobRole);
 router.get("/", getJobRoles);
 
 // GET BY SUBDEPARTMENT
-router.get(
-  "/subdepartment/:subDepartmentId",
-  getRolesBySubDepartment
-);
+router.get("/subdepartment/:subDepartmentId", getRolesBySubDepartment);
 
 // UPDATE
 router.put("/:id", updateJobRole);
@@ -29,4 +25,5 @@ router.put("/:id", updateJobRole);
 // DELETE
 router.delete("/:id", deleteJobRole);
 
-module.exports = router;
+// ✅ IMPORTANT
+export default router;
