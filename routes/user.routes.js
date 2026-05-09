@@ -12,12 +12,12 @@ const router = express.Router();
 router.post("/", protectAdmin, createUser);
 
 // ============================
-// UPDATE USER  ← NEW
+// UPDATE USER
 // ============================
 router.put("/:id", protectAdmin, updateUser);
 
 // ============================
-// GET ALL USERS  ← FIXED (returns all fields)
+// GET ALL USERS
 // ============================
 router.get("/", protectAdmin, async (req, res) => {
   try {
@@ -25,12 +25,12 @@ router.get("/", protectAdmin, async (req, res) => {
       .select("-password")
       .populate("organization", "name")
       .populate("department", "name")
-      .populate("subDepartment", "name")
       .populate("manager", "firstName lastName email")
       .sort({ createdAt: -1 });
 
     res.json(users);
   } catch (err) {
+    console.error("GET USERS ERROR:", err.message); // ← shows exact crash
     res.status(500).json({ message: err.message });
   }
 });
@@ -45,7 +45,7 @@ router.get("/managers/list", protectAdmin, async (req, res) => {
     );
     res.json(managers);
   } catch (err) {
-    console.error(err);
+    console.error("GET MANAGERS ERROR:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
@@ -69,7 +69,7 @@ router.get("/my-employees", protect, async (req, res) => {
       }))
     );
   } catch (err) {
-    console.error(err);
+    console.error("MY EMPLOYEES ERROR:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
@@ -101,12 +101,12 @@ router.get("/employee/:id", protect, async (req, res) => {
       leaves,
     });
   } catch (err) {
-    console.error("EMPLOYEE DETAIL ERROR:", err);
+    console.error("EMPLOYEE DETAIL ERROR:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-export default router; // ← MOVED TO END
+export default router;
 
 
 
