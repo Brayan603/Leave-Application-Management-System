@@ -15,6 +15,9 @@ import leaveBalanceRoutes from "./routes/leaveBalance.routes.js";
 import entitlementRoutes from "./routes/entitlement.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 
+// ✅ NEW JOB ROLE ROUTES
+import jobRoleRoutes from "./routes/jobRole.routes.js";
+
 dotenv.config();
 
 const app = express();
@@ -43,14 +46,28 @@ app.get("/", (req, res) => {
 app.use("/api/organizations", orgRoutes);
 app.use("/api/auth", authRoutes);
 
-// ✅ FIXED HERE
+// USERS
 app.use("/api/users", userRouter);
 
+// LEAVE
 app.use("/api/leave", leaveRoutes);
+
+// DEPARTMENTS
 app.use("/api/department", departmentRoutes);
+
+// SUB DEPARTMENTS
 app.use("/api/subdepartments", subDepartmentRoutes);
+
+// ✅ JOB ROLES
+app.use("/api/job-roles", jobRoleRoutes);
+
+// LEAVE BALANCES
 app.use("/api/leave-balances", leaveBalanceRoutes);
+
+// ENTITLEMENTS
 app.use("/api/entitlements", entitlementRoutes);
+
+// NOTIFICATIONS
 app.use("/api/notifications", notificationRoutes);
 
 // ============================
