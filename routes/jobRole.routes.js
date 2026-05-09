@@ -8,7 +8,7 @@ const {
   getRolesBySubDepartment,
   updateJobRole,
   deleteJobRole,
-} = require("../controllers/jobRoleController");
+} = require("../controllers/jobRole.controller");
 
 
 // CREATE
