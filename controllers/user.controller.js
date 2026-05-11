@@ -11,7 +11,7 @@ const findUserOrFail = async (userId) => {
   return user;
 };
 
-// ------------------- User Details -------------------
+// User Details
 export const getUserDetails = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
@@ -27,7 +27,7 @@ export const getUserDetails = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ------------------- Close User -------------------
+// Close User
 export const closeUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
@@ -35,13 +35,13 @@ export const closeUser = async (req, res, next) => {
       return res.status(409).json({ message: "User is already closed" });
     }
     user.status = "closed";
-    user.sessions = [];   // force logout
+    user.sessions = [];
     await user.save();
     res.json({ message: "User closed successfully", userId: user._id, status: user.status });
   } catch (err) { next(err); }
 };
 
-// ------------------- Disable User -------------------
+// Disable User
 export const disableUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
@@ -54,7 +54,7 @@ export const disableUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ------------------- Enable User -------------------
+// Enable User
 export const enableUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
@@ -67,7 +67,7 @@ export const enableUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ------------------- Logout User (invalidate all sessions) -------------------
+// Logout User
 export const logoutUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
@@ -77,7 +77,7 @@ export const logoutUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ------------------- Logout All (system-wide) -------------------
+// Logout All
 export const logoutAllUsers = async (req, res, next) => {
   try {
     await User.updateMany({}, { $set: { sessions: [] } });
@@ -85,7 +85,7 @@ export const logoutAllUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ------------------- Reopen User -------------------
+// Reopen User
 export const reopenUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
@@ -98,18 +98,16 @@ export const reopenUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ------------------- Resend Credential -------------------
-// Placeholder – integrate with your email service
+// Resend Credential
 export const resendCredential = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
-    // Example: trigger a welcome/reset email
-    // await sendActivationEmail(user.email);
+    // integrate your email service here
     res.json({ message: "Credentials resent successfully", userId: user._id });
   } catch (err) { next(err); }
 };
 
-// ------------------- Authorize User -------------------
+// Authorize User
 export const authorizeUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
