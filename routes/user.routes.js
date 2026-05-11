@@ -4,21 +4,25 @@ import Leave from "../models/LeaveType.js";
 import { protectAdmin, protect } from "../middleware/auth.middleware.js";
 import { createUser, updateUser } from "../controllers/user.controller.js";
 
+// Maintenance controllers
+import {
+  getUserDetails,
+  closeUser,
+  disableUser,
+  enableUser,
+  logoutUser,
+  logoutAllUsers,
+  reopenUser,
+  resendCredential,
+  authorizeUser,
+} from "../controllers/userMaintenance.controller.js";
+
 const router = express.Router();
 
-// ============================
-// CREATE USER
-// ============================
+// ========== Existing Routes ==========
 router.post("/", protectAdmin, createUser);
-
-// ============================
-// UPDATE USER
-// ============================
 router.put("/:id", protectAdmin, updateUser);
 
-// ============================
-// GET ALL USERS
-// ============================
 router.get("/", protectAdmin, async (req, res) => {
   try {
     const users = await User.find()
@@ -27,39 +31,25 @@ router.get("/", protectAdmin, async (req, res) => {
       .populate("department", "name")
       .populate("manager", "firstName lastName email")
       .sort({ createdAt: -1 });
-
     res.json(users);
   } catch (err) {
-    console.error("GET USERS ERROR:", err.message); // ← shows exact crash
     res.status(500).json({ message: err.message });
   }
 });
 
-// ============================
-// GET ALL MANAGERS
-// ============================
 router.get("/managers/list", protectAdmin, async (req, res) => {
   try {
-    const managers = await User.find({ role: "manager" }).select(
-      "_id firstName lastName email"
-    );
+    const managers = await User.find({ role: "manager" }).select("_id firstName lastName email");
     res.json(managers);
   } catch (err) {
-    console.error("GET MANAGERS ERROR:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
 
-// ============================
-// GET MY EMPLOYEES
-// ============================
 router.get("/my-employees", protect, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || req.user;
-    const employees = await User.find({
-      manager: managerId,
-      role: "employee",
-    });
+    const employees = await User.find({ manager: managerId, role: "employee" });
     res.json(
       employees.map((u) => ({
         id: u._id,
@@ -69,42 +59,26 @@ router.get("/my-employees", protect, async (req, res) => {
       }))
     );
   } catch (err) {
-    console.error("MY EMPLOYEES ERROR:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
 
-// ============================
-// GET SINGLE EMPLOYEE
-// ============================
 router.get("/employee/:id", protect, async (req, res) => {
-  try {
-    const employeeId = req.params.id;
-    const employee = await User.findById(employeeId)
-      .populate("department", "name")
-      .select("-password");
-
-    if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    const leaves = await Leave.find({ user: employeeId }).sort({ createdAt: -1 });
-
-    res.json({
-      employee: {
-        id: employee._id,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        email: employee.email,
-        department: employee.department,
-      },
-      leaves,
-    });
-  } catch (err) {
-    console.error("EMPLOYEE DETAIL ERROR:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
+  // ... your existing employee detail code
 });
+
+// ========== New Maintenance Routes ==========
+// Note: order matters – place `/logout-all` before `/:userId` routes
+router.post("/logout-all", protectAdmin, logoutAllUsers);
+
+router.get("/:userId", protectAdmin, getUserDetails);
+router.post("/:userId/close", protectAdmin, closeUser);
+router.post("/:userId/disable", protectAdmin, disableUser);
+router.post("/:userId/enable", protectAdmin, enableUser);
+router.post("/:userId/logout", protectAdmin, logoutUser);
+router.post("/:userId/reopen", protectAdmin, reopenUser);
+router.post("/:userId/resend-credential", protectAdmin, resendCredential);
+router.post("/:userId/authorize", protectAdmin, authorizeUser);
 
 export default router;
 
