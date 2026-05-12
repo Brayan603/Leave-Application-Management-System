@@ -23,6 +23,22 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
+    // 🔒 Check if user is disabled
+    if (user.status === "Disabled") {
+      return res.status(403).json({ 
+        message: "Your account has been disabled. Please contact your administrator.",
+        code: "ACCOUNT_DISABLED"
+      });
+    }
+
+    // 🔒 Check if user is closed
+    if (user.status === "Closed") {
+      return res.status(403).json({ 
+        message: "Your account has been closed. Please contact your administrator.",
+        code: "ACCOUNT_CLOSED"
+      });
+    }
+
     req.user = user;
     next();
 
@@ -53,6 +69,14 @@ export const protectAdmin = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
+    // 🔒 Check if admin account is disabled or closed
+    if (user.status === "Disabled" || user.status === "Closed") {
+      return res.status(403).json({ 
+        message: "Your account has been restricted. Please contact another administrator.",
+        code: "ACCOUNT_RESTRICTED"
+      });
+    }
+
     if (user.role !== "admin") {
       return res.status(403).json({ message: "Admins only" });
     }
@@ -75,6 +99,21 @@ export const requireManager = (req, res, next) => {
       return res.status(401).json({ message: "Not authorized" });
     }
 
+    // 🔒 Check if manager account is disabled or closed
+    if (req.user.status === "Disabled") {
+      return res.status(403).json({ 
+        message: "Your account has been disabled. Please contact your administrator.",
+        code: "ACCOUNT_DISABLED"
+      });
+    }
+
+    if (req.user.status === "Closed") {
+      return res.status(403).json({ 
+        message: "Your account has been closed. Please contact your administrator.",
+        code: "ACCOUNT_CLOSED"
+      });
+    }
+
     if (req.user.role !== "manager") {
       return res.status(403).json({ message: "Managers only" });
     }
@@ -84,7 +123,6 @@ export const requireManager = (req, res, next) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-
     
 
 
