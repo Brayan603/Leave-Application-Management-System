@@ -1,4 +1,3 @@
-// controllers/auth.controller.js
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -18,7 +17,6 @@ export const loginUser = async (req, res) => {
     email = email.trim().toLowerCase();
     password = password.trim();
 
-    // 🔥 IMPORTANT: login must NEVER depend on system state
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -26,7 +24,7 @@ export const loginUser = async (req, res) => {
     }
 
     // 🔒 Check if user account is disabled
-    if (user.status === "Disabled") {
+    if (user.status === "disabled") {
       return res.status(403).json({ 
         message: "Your account has been disabled. Please contact your system administrator.",
         code: "ACCOUNT_DISABLED"
@@ -34,7 +32,7 @@ export const loginUser = async (req, res) => {
     }
 
     // 🔒 Check if user account is closed
-    if (user.status === "Closed") {
+    if (user.status === "closed") {
       return res.status(403).json({ 
         message: "Your account has been closed. Please contact your system administrator.",
         code: "ACCOUNT_CLOSED"
@@ -51,6 +49,7 @@ export const loginUser = async (req, res) => {
       {
         id: user._id,
         role: user.role,
+        tokenVersion: user.tokenVersion || 0,
       },
       process.env.JWT_SECRET,
       {
