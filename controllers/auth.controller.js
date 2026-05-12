@@ -12,7 +12,7 @@ export const loginUser = async (req, res) => {
     let { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      return res.status(400).json({ message: "Email and password are required!" });
     }
 
     email = email.trim().toLowerCase();
@@ -22,7 +22,23 @@ export const loginUser = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Invalid Credentials!" });
+    }
+
+    // 🔒 Check if user account is disabled
+    if (user.status === "Disabled") {
+      return res.status(403).json({ 
+        message: "Your account has been disabled. Please contact your system administrator.",
+        code: "ACCOUNT_DISABLED"
+      });
+    }
+
+    // 🔒 Check if user account is closed
+    if (user.status === "Closed") {
+      return res.status(403).json({ 
+        message: "Your account has been closed. Please contact your system administrator.",
+        code: "ACCOUNT_CLOSED"
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -51,6 +67,7 @@ export const loginUser = async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         role: user.role,
+        status: user.status,
       },
     });
 
