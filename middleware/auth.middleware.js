@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 // ============================
-// 🔐 BASIC AUTH (FIXED)
+// 🔐 BASIC AUTH
 // ============================
 export const protect = async (req, res, next) => {
   try {
@@ -23,8 +23,18 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
+    // 🔥 Check token version - invalidates old tokens after disable/close
+    if (decoded.tokenVersion !== undefined && user.tokenVersion !== undefined) {
+      if (decoded.tokenVersion !== user.tokenVersion) {
+        return res.status(401).json({ 
+          message: "Session expired. Please login again.",
+          code: "TOKEN_EXPIRED"
+        });
+      }
+    }
+
     // 🔒 Check if user is disabled
-    if (user.status === "Disabled") {
+    if (user.status === "disabled") {
       return res.status(403).json({ 
         message: "Your account has been disabled. Please contact your administrator.",
         code: "ACCOUNT_DISABLED"
@@ -32,7 +42,7 @@ export const protect = async (req, res, next) => {
     }
 
     // 🔒 Check if user is closed
-    if (user.status === "Closed") {
+    if (user.status === "closed") {
       return res.status(403).json({ 
         message: "Your account has been closed. Please contact your administrator.",
         code: "ACCOUNT_CLOSED"
@@ -49,7 +59,7 @@ export const protect = async (req, res, next) => {
 };
 
 // ============================
-// 👑 ADMIN ONLY (FIXED)
+// 👑 ADMIN ONLY
 // ============================
 export const protectAdmin = async (req, res, next) => {
   try {
@@ -69,8 +79,18 @@ export const protectAdmin = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
+    // 🔥 Check token version
+    if (decoded.tokenVersion !== undefined && user.tokenVersion !== undefined) {
+      if (decoded.tokenVersion !== user.tokenVersion) {
+        return res.status(401).json({ 
+          message: "Session expired. Please login again.",
+          code: "TOKEN_EXPIRED"
+        });
+      }
+    }
+
     // 🔒 Check if admin account is disabled or closed
-    if (user.status === "Disabled" || user.status === "Closed") {
+    if (user.status === "disabled" || user.status === "closed") {
       return res.status(403).json({ 
         message: "Your account has been restricted. Please contact another administrator.",
         code: "ACCOUNT_RESTRICTED"
@@ -100,14 +120,14 @@ export const requireManager = (req, res, next) => {
     }
 
     // 🔒 Check if manager account is disabled or closed
-    if (req.user.status === "Disabled") {
+    if (req.user.status === "disabled") {
       return res.status(403).json({ 
         message: "Your account has been disabled. Please contact your administrator.",
         code: "ACCOUNT_DISABLED"
       });
     }
 
-    if (req.user.status === "Closed") {
+    if (req.user.status === "closed") {
       return res.status(403).json({ 
         message: "Your account has been closed. Please contact your administrator.",
         code: "ACCOUNT_CLOSED"
@@ -123,6 +143,7 @@ export const requireManager = (req, res, next) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
     
 
 
