@@ -33,20 +33,7 @@ export const getUserDetails = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ------------------- Close User -------------------
-export const closeUser = async (req, res, next) => {
-  try {
-    const user = await findUserOrFail(req.params.userId);
-    if (user.status === "Closed") {
-      return res.status(409).json({ message: "User is already closed" });
-    }
-    user.status = "Closed";
-    user.sessions = [];   // force logout all sessions
-    user.refreshToken = null; // invalidate refresh token if using one
-    await user.save();
-    res.json({ message: "User closed successfully", userId: user._id, status: user.status });
-  } catch (err) { next(err); }
-};
+// controllers/userMaintenance.controller.js
 
 // ------------------- Disable User -------------------
 export const disableUser = async (req, res, next) => {
@@ -58,10 +45,34 @@ export const disableUser = async (req, res, next) => {
     if (user.status === "Closed") {
       return res.status(409).json({ message: "Cannot disable a closed user. Reopen first." });
     }
+    
     user.status = "Disabled";
-    user.sessions = [];   // force logout all sessions
+    
+    // 🔥 Force invalidate all existing tokens by changing token version
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    
     await user.save();
-    res.json({ message: "User disabled successfully", userId: user._id, status: user.status });
+    
+    res.json({ message: "User disabled successfully. All sessions terminated.", userId: user._id, status: user.status });
+  } catch (err) { next(err); }
+};
+
+// ------------------- Close User -------------------
+export const closeUser = async (req, res, next) => {
+  try {
+    const user = await findUserOrFail(req.params.userId);
+    if (user.status === "Closed") {
+      return res.status(409).json({ message: "User is already closed" });
+    }
+    
+    user.status = "Closed";
+    
+    // 🔥 Force invalidate all existing tokens
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    
+    await user.save();
+    
+    res.json({ message: "User closed successfully. All sessions terminated.", userId: user._id, status: user.status });
   } catch (err) { next(err); }
 };
 
