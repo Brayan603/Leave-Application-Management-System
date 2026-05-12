@@ -20,9 +20,15 @@ export const getUserDetails = async (req, res, next) => {
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
+      username: user.username,
       role: user.role,
       status: user.status,
       authorized: user.authorized,
+      organization: user.organization,
+      department: user.department,
+      manager: user.manager,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     });
   } catch (err) { next(err); }
 };
@@ -31,11 +37,12 @@ export const getUserDetails = async (req, res, next) => {
 export const closeUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
-    if (user.status === "closed") {
+    if (user.status === "Closed") {
       return res.status(409).json({ message: "User is already closed" });
     }
-    user.status = "closed";
-    user.sessions = [];   // force logout
+    user.status = "Closed";
+    user.sessions = [];   // force logout all sessions
+    user.refreshToken = null; // invalidate refresh token if using one
     await user.save();
     res.json({ message: "User closed successfully", userId: user._id, status: user.status });
   } catch (err) { next(err); }
@@ -45,10 +52,14 @@ export const closeUser = async (req, res, next) => {
 export const disableUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
-    if (user.status === "disabled") {
+    if (user.status === "Disabled") {
       return res.status(409).json({ message: "User is already disabled" });
     }
-    user.status = "disabled";
+    if (user.status === "Closed") {
+      return res.status(409).json({ message: "Cannot disable a closed user. Reopen first." });
+    }
+    user.status = "Disabled";
+    user.sessions = [];   // force logout all sessions
     await user.save();
     res.json({ message: "User disabled successfully", userId: user._id, status: user.status });
   } catch (err) { next(err); }
@@ -58,10 +69,13 @@ export const disableUser = async (req, res, next) => {
 export const enableUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
-    if (user.status === "active") {
+    if (user.status === "Active") {
       return res.status(409).json({ message: "User is already active" });
     }
-    user.status = "active";
+    if (user.status === "Closed") {
+      return res.status(409).json({ message: "Cannot enable a closed user. Reopen first." });
+    }
+    user.status = "Active";
     await user.save();
     res.json({ message: "User enabled successfully", userId: user._id, status: user.status });
   } catch (err) { next(err); }
@@ -72,6 +86,7 @@ export const logoutUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
     user.sessions = [];
+    user.refreshToken = null;
     await user.save();
     res.json({ message: "User logged out successfully", userId: user._id });
   } catch (err) { next(err); }
@@ -80,7 +95,7 @@ export const logoutUser = async (req, res, next) => {
 // ------------------- Logout All (system-wide) -------------------
 export const logoutAllUsers = async (req, res, next) => {
   try {
-    await User.updateMany({}, { $set: { sessions: [] } });
+    await User.updateMany({}, { $set: { sessions: [], refreshToken: null } });
     res.json({ message: "All users logged out successfully" });
   } catch (err) { next(err); }
 };
@@ -89,22 +104,34 @@ export const logoutAllUsers = async (req, res, next) => {
 export const reopenUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
-    if (user.status !== "closed") {
+    if (user.status !== "Closed") {
       return res.status(409).json({ message: "Only closed users can be reopened" });
     }
-    user.status = "active";
+    user.status = "Active";
+    user.sessions = [];
     await user.save();
     res.json({ message: "User reopened successfully", userId: user._id, status: user.status });
   } catch (err) { next(err); }
 };
 
 // ------------------- Resend Credential -------------------
-// Placeholder – integrate with your email service
 export const resendCredential = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
-    // Example: trigger a welcome/reset email
-    // await sendActivationEmail(user.email);
+    
+    if (user.status === "Closed") {
+      return res.status(409).json({ message: "Cannot send credentials to a closed user" });
+    }
+
+    // Generate a reset token or temporary password
+    // const resetToken = crypto.randomBytes(32).toString("hex");
+    // user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+    // user.resetPasswordExpire = Date.now() + 3600000; // 1 hour
+    // await user.save();
+    
+    // Send email with credentials
+    // await sendCredentialEmail(user.email, resetToken);
+
     res.json({ message: "Credentials resent successfully", userId: user._id });
   } catch (err) { next(err); }
 };
@@ -113,11 +140,39 @@ export const resendCredential = async (req, res, next) => {
 export const authorizeUser = async (req, res, next) => {
   try {
     const user = await findUserOrFail(req.params.userId);
+    
+    if (user.status === "Closed") {
+      return res.status(409).json({ message: "Cannot authorize a closed user" });
+    }
+    
     if (user.authorized) {
       return res.status(409).json({ message: "User is already authorized" });
     }
+    
     user.authorized = true;
     await user.save();
-    res.json({ message: "User authorized successfully", userId: user._id });
+    res.json({ message: "User authorized successfully", userId: user._id, authorized: user.authorized });
   } catch (err) { next(err); }
+};
+
+// ------------------- Deauthorize User -------------------
+export const deauthorizeUser = async (req, res, next) => {
+  try {
+    const user = await findUserOrFail(req.params.userId);
+    
+    if (!user.authorized) {
+      return res.status(409).json({ message: "User is already unauthorized" });
+    }
+    
+    user.authorized = false;
+    await user.save();
+    res.json({ message: "User unauthorized successfully", userId: user._id, authorized: user.authorized });
+  } catch (err) { next(err); }
+};
+
+// ------------------- Check User Status (for auth middleware) -------------------
+export const isUserBlocked = async (userId) => {
+  const user = await User.findById(userId).select("status");
+  if (!user) return true;
+  return user.status === "Disabled" || user.status === "Closed";
 };
