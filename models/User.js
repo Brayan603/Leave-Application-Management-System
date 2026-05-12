@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema(
     department:   { type: mongoose.Schema.Types.ObjectId, ref: "Department" },
     manager:      { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-    // ===== New maintenance fields =====
+    // ===== Maintenance fields =====
     status: {
       type: String,
       enum: ["active", "disabled", "closed"],
@@ -19,7 +19,11 @@ const userSchema = new mongoose.Schema(
     },
     authorized: {
       type: Boolean,
-      default: false,          // admin must authorize after creation
+      default: false,
+    },
+    tokenVersion: {
+      type: Number,
+      default: 0,
     },
     sessions: [
       {
@@ -28,7 +32,7 @@ const userSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
-    // =================================
+    // ==============================
   },
   { timestamps: true }
 );
