@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Leave from "../models/LeaveRequest.js";
+import Leave from "../models/LeaveRequest.js";   // ← ensure this exports a Mongoose model
 import Entitlement from "../models/Entitlement.js";
 import LeaveType from "../models/LeaveType.js";
 import User from "../models/User.js";
@@ -187,7 +187,7 @@ export const getUserLeaveTypes = async (req, res) => {
 };
 
 // ============================
-// 📌 GET USER LEAVE HISTORY
+// 📌 GET USER LEAVE HISTORY (own)
 // ============================
 export const getUserLeaveHistory = async (req, res) => {
   try {
@@ -197,7 +197,7 @@ export const getUserLeaveHistory = async (req, res) => {
       .populate("approvedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
 
-      const formatted = leaves.map((l) => ({
+    const formatted = leaves.map((l) => ({
       id: l._id,
       userId: l.user?._id?.toString(),
       type: l.leaveType?.name || "Unknown",
@@ -228,8 +228,8 @@ export const getUserLeaveHistoryById = async (req, res) => {
       .populate("leaveType", "name")
       .populate("approvedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
-    
-      const formatted = leaves.map((l) => ({
+
+    const formatted = leaves.map((l) => ({
       id: l._id,
       userId: l.user?._id?.toString(),
       type: l.leaveType?.name || "Unknown",
@@ -261,7 +261,6 @@ export const getManagerLeaves = async (req, res) => {
       return res.status(401).json({ message: "Not authorized" });
     }
 
-    // Find employees under this manager
     const employees = await User.find({ manager: managerId, role: "employee" }).select("_id");
     const employeeIds = employees.map((e) => e._id);
 
@@ -269,14 +268,13 @@ export const getManagerLeaves = async (req, res) => {
       return res.json([]);
     }
 
-    // Get all leaves for those employees
     const leaves = await Leave.find({ user: { $in: employeeIds } })
       .populate("user", "firstName lastName email")
       .populate("leaveType", "name")
       .populate("approvedBy", "firstName lastName email")
       .sort({ start: 1 });
 
-      const formatted = leaves.map((l) => ({
+    const formatted = leaves.map((l) => ({
       id: l._id,
       userId: l.user?._id?.toString(),
       employee: l.user ? `${l.user.firstName} ${l.user.lastName}` : "Unknown",
@@ -296,6 +294,76 @@ export const getManagerLeaves = async (req, res) => {
   } catch (err) {
     console.error("GET MANAGER LEAVES ERROR:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ============================
+// 🛡️ GET ALL LEAVES (ADMIN ONLY)
+// ============================
+export const getAllLeavesForAdmin = async (req, res) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      department,
+      employee,
+      leaveType,
+      status,
+    } = req.query;
+
+    const filter = {};
+
+    // ---- Date filtering ----
+    if (startDate) {
+      filter.start = { ...filter.start, $gte: new Date(startDate) };
+    }
+    if (endDate) {
+      filter.end = { ...filter.end, $lte: new Date(endDate) };
+    }
+
+    // ---- Department filter ----
+    if (department) {
+      const usersInDept = await User.find({ department }).select("_id");
+      const userIds = usersInDept.map(u => u._id);
+      // Merge with existing user filter if any
+      if (filter.user) {
+        // If employee filter was also provided, keep only employee if it belongs to that department
+        const employeeId = filter.user;
+        if (userIds.some(id => id.equals(employeeId))) {
+          // already set
+        } else {
+          return res.json([]);
+        }
+      } else {
+        filter.user = { $in: userIds };
+      }
+    }
+
+    // ---- Employee filter ----
+    if (employee) {
+      // Overwrites department filter (or can be merged, but simpler to use only one)
+      filter.user = employee;
+    }
+
+    // ---- Leave type filter ----
+    if (leaveType) {
+      filter.leaveType = leaveType;   // NOT leaveTypeId
+    }
+
+    // ---- Status filter ----
+    if (status) {
+      filter.status = status;
+    }
+
+    const leaves = await Leave.find(filter)
+      .populate("user", "firstName lastName email department")
+      .populate("leaveType", "name")                 // NOT leaveTypeId
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    res.json(leaves);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
