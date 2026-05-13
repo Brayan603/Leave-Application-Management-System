@@ -298,7 +298,7 @@ export const getManagerLeaves = async (req, res) => {
 };
 
 // ============================
-// 🛡️ GET ALL LEAVES (ADMIN ONLY) – safe & validated
+// 🛡️ GET ALL LEAVES (ADMIN ONLY) – production‑ready
 // ============================
 export const getAllLeavesForAdmin = async (req, res) => {
   try {
@@ -317,70 +317,55 @@ export const getAllLeavesForAdmin = async (req, res) => {
     // ---- Date filtering ----
     if (startDate) {
       const d = new Date(startDate);
-      if (isNaN(d.getTime())) {
-        return res.status(400).json({ message: "Invalid startDate" });
-      }
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid startDate" });
       filter.start = { ...filter.start, $gte: d };
     }
     if (endDate) {
       const d = new Date(endDate);
-      if (isNaN(d.getTime())) {
-        return res.status(400).json({ message: "Invalid endDate" });
-      }
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid endDate" });
       filter.end = { ...filter.end, $lte: d };
     }
 
-    // ---- Employee filter (highest priority) ----
+    // ---- User filtering (employee > subDepartment > department) ----
     if (employee) {
-      if (!mongoose.Types.ObjectId.isValid(employee)) {
+      if (!mongoose.Types.ObjectId.isValid(employee))
         return res.status(400).json({ message: "Invalid employee ID" });
-      }
       filter.user = new mongoose.Types.ObjectId(employee);
-    }
-    // ---- Sub‑department filter (if no employee specified) ----
-    else if (subDepartment) {
-      if (!mongoose.Types.ObjectId.isValid(subDepartment)) {
+    } else if (subDepartment) {
+      if (!mongoose.Types.ObjectId.isValid(subDepartment))
         return res.status(400).json({ message: "Invalid subDepartment ID" });
-      }
-      const usersInSubDept = await User.find({ subDepartment: new mongoose.Types.ObjectId(subDepartment) }).select("_id");
-      const userIds = usersInSubDept.map(u => u._id);
-      if (userIds.length > 0) {
-        filter.user = { $in: userIds };
-      } else {
-        return res.json([]); // no users in that sub‑department
-      }
-    }
-    // ---- Department filter (if no employee / subDepartment specified) ----
-    else if (department) {
-      if (!mongoose.Types.ObjectId.isValid(department)) {
+      const users = await User.find({ subDepartment: new mongoose.Types.ObjectId(subDepartment) }).select("_id");
+      const ids = users.map(u => u._id);
+      if (ids.length) filter.user = { $in: ids };
+      else return res.json([]);
+    } else if (department) {
+      if (!mongoose.Types.ObjectId.isValid(department))
         return res.status(400).json({ message: "Invalid department ID" });
-      }
-      // Find users in the department + its sub‑departments
       const deptId = new mongoose.Types.ObjectId(department);
-      const SubDepartment = (await import("../models/SubDepartment.js")).default;
-      const subDeptIds = await SubDepartment.find({ department: deptId })
-        .select("_id")
-        .then(subs => subs.map(s => s._id));
+
+      // optional: include sub‑departments if model exists
+      let subDeptIds = [];
+      try {
+        const SubDepartment = (await import("../models/SubDepartment.js")).default;
+        const subs = await SubDepartment.find({ department: deptId }).select("_id");
+        subDeptIds = subs.map(s => s._id);
+      } catch (err) {
+        // SubDepartment model not available – proceed with department only
+      }
 
       const conditions = [{ department: deptId }];
-      if (subDeptIds.length) {
-        conditions.push({ subDepartment: { $in: subDeptIds } });
-      }
+      if (subDeptIds.length) conditions.push({ subDepartment: { $in: subDeptIds } });
 
-      const usersInScope = await User.find({ $or: conditions }).select("_id");
-      const userIds = usersInScope.map(u => u._id);
-      if (userIds.length > 0) {
-        filter.user = { $in: userIds };
-      } else {
-        return res.json([]);
-      }
+      const users = await User.find({ $or: conditions }).select("_id");
+      const ids = users.map(u => u._id);
+      if (ids.length) filter.user = { $in: ids };
+      else return res.json([]);
     }
 
     // ---- Leave type filter ----
     if (leaveType) {
-      if (!mongoose.Types.ObjectId.isValid(leaveType)) {
+      if (!mongoose.Types.ObjectId.isValid(leaveType))
         return res.status(400).json({ message: "Invalid leaveType ID" });
-      }
       filter.leaveType = new mongoose.Types.ObjectId(leaveType);
     }
 
