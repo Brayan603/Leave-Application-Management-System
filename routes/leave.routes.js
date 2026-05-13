@@ -10,6 +10,7 @@ import {
   getUserLeaveHistory,
   getUserLeaveHistoryById, // ✅ include this new controller
   getManagerLeaves,   // ✅ add this line
+  getAllLeaves,
 } from "../controllers/leave.controller.js";
 
 import { protect, protectAdmin, requireManager } from "../middleware/auth.middleware.js";
@@ -41,6 +42,7 @@ router.get("/pending", protect, requireManager, getPendingLeaves);
 
 router.put("/:id/status", protect, requireManager, updateLeaveStatus);
 router.get("/manager/leaves", protect, requireManager, getManagerLeaves);
+router.get("/admin/all", protectAdmin, getAllLeavesForAdmin);
 
 export default router;
 
