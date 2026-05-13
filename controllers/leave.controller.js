@@ -298,7 +298,7 @@ export const getManagerLeaves = async (req, res) => {
 };
 
 // ============================
-// 🛡️ GET ALL LEAVES (ADMIN ONLY)
+// 🛡️ GET ALL LEAVES (ADMIN ONLY) – with department + sub‑department support
 // ============================
 export const getAllLeavesForAdmin = async (req, res) => {
   try {
@@ -306,6 +306,7 @@ export const getAllLeavesForAdmin = async (req, res) => {
       startDate,
       endDate,
       department,
+      subDepartment,   // 🔥 optional: filter by a specific sub‑department
       employee,
       leaveType,
       status,
@@ -321,33 +322,44 @@ export const getAllLeavesForAdmin = async (req, res) => {
       filter.end = { ...filter.end, $lte: new Date(endDate) };
     }
 
-    // ---- Department filter ----
-    if (department) {
-      const usersInDept = await User.find({ department }).select("_id");
-      const userIds = usersInDept.map(u => u._id);
-      // Merge with existing user filter if any
-      if (filter.user) {
-        // If employee filter was also provided, keep only employee if it belongs to that department
-        const employeeId = filter.user;
-        if (userIds.some(id => id.equals(employeeId))) {
-          // already set
-        } else {
-          return res.json([]);
-        }
-      } else {
-        filter.user = { $in: userIds };
-      }
+    // ---- User filtering (department / sub-department / employee) ----
+    let userIds = null;
+
+    // 1) If a sub‑department is directly provided
+    if (subDepartment) {
+      const usersInSubDept = await User.find({ subDepartment }).select("_id");
+      userIds = usersInSubDept.map(u => u._id);
+    }
+    // 2) If a department is provided, include users from that dept + its sub‑departments
+    else if (department) {
+      // Fetch the department's sub‑departments (using existing route or directly model)
+      const SubDepartment = (await import("../models/SubDepartment.js")).default; // adjust import path as needed
+      const subDeptIds = await SubDepartment.find({ department })
+        .select("_id")
+        .then(subs => subs.map(s => s._id));
+
+      // Users in the parent department OR in any sub‑department
+      const deptCondition = [
+        { department },
+        ...(subDeptIds.length ? [{ subDepartment: { $in: subDeptIds } }] : []),
+      ];
+
+      const usersInScope = await User.find({
+        $or: deptCondition,
+      }).select("_id");
+      userIds = usersInScope.map(u => u._id);
     }
 
-    // ---- Employee filter ----
+    // 3) If a specific employee is provided, override any previous user filter
     if (employee) {
-      // Overwrites department filter (or can be merged, but simpler to use only one)
-      filter.user = employee;
+      filter.user = employee;   // exact match
+    } else if (userIds) {
+      filter.user = { $in: userIds };
     }
 
     // ---- Leave type filter ----
     if (leaveType) {
-      filter.leaveType = leaveType;   // NOT leaveTypeId
+      filter.leaveType = leaveType;
     }
 
     // ---- Status filter ----
@@ -356,8 +368,8 @@ export const getAllLeavesForAdmin = async (req, res) => {
     }
 
     const leaves = await Leave.find(filter)
-      .populate("user", "firstName lastName email department")
-      .populate("leaveType", "name")                 // NOT leaveTypeId
+      .populate("user", "firstName lastName email department subDepartment")
+      .populate("leaveType", "name")
       .populate("approvedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
 
@@ -366,4 +378,3 @@ export const getAllLeavesForAdmin = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
