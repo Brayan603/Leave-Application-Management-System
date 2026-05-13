@@ -10,7 +10,7 @@ import {
   getUserLeaveHistory,
   getUserLeaveHistoryById, // ✅ include this new controller
   getManagerLeaves,   // ✅ add this line
-  getAllLeaves,
+  getAllLeavesForAdmin, 
 } from "../controllers/leave.controller.js";
 
 import { protect, protectAdmin, requireManager } from "../middleware/auth.middleware.js";
