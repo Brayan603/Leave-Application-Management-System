@@ -166,7 +166,7 @@ const templates = {
 };
 
 /* ── sendEmail ── */
-export const sendEmail = async ({ to, type, data }) => {
+const sendEmail = async ({ to, type, data }) => {
   const templateFn = templates[type];
   if (!templateFn) throw new Error(`Unknown email template type: "${type}"`);
 
@@ -184,7 +184,7 @@ export const sendEmail = async ({ to, type, data }) => {
 };
 
 /* ── verifyConnection ── */
-export const verifyConnection = async () => {
+const verifyConnection = async () => {
   try {
     await transporter.verify();
     console.log("[Email] SMTP connection verified ✓");
@@ -192,3 +192,6 @@ export const verifyConnection = async () => {
     console.warn("[Email] SMTP connection failed:", err.message);
   }
 };
+
+// Default export to match: import emailService from "./emailService.js"
+export default { sendEmail, verifyConnection };
