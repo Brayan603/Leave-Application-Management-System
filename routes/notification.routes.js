@@ -1,5 +1,6 @@
 // backend/routes/notification.routes.js
 import express from "express";
+import jwt from "jsonwebtoken";
 const router = express.Router();
 
 // ESM imports – import the whole service object then destructure
@@ -7,11 +8,28 @@ import notificationService from "../services/notificationService.js";
 const { send, broadcast } = notificationService;
 import Notification from "../models/Notification.js";
 
-// Middleware: attach io from app
-const withIO = (req, res, next) => {
-  req.io = req.app.get("io");
-  next();
+// ─── Authentication middleware ─────────────────
+const protect = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Not authenticated, token missing" });
+    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Attach user from token payload (adjust fields to match your token)
+    req.user = {
+      id: decoded.id || decoded.userId,
+      role: decoded.role,
+      name: decoded.name || decoded.username || "User",
+    };
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Token invalid or expired" });
+  }
 };
+
+// ... (all the route handlers stay exactly the same) ...
 
 /* ─────────────────────────────────────────────
    GET /api/notifications
