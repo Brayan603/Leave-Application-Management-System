@@ -46,6 +46,49 @@ router.get("/managers/list", protectAdmin, async (req, res) => {
   }
 });
 
+// ========== NEW: User Search (for messenger) ==========
+router.get("/search", protectAdmin, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) return res.json({ users: [] });
+
+    const regex = new RegExp(q.trim(), "i");
+    const users = await User.find({
+      $or: [
+        { firstName: regex },
+        { lastName: regex },
+        { email: regex },
+        // combine first+last name search
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$firstName", " ", "$lastName"] },
+              regex: q.trim(),
+              options: "i",
+            },
+          },
+        },
+      ],
+    })
+      .select("firstName lastName email phone department")
+      .limit(10)
+      .lean();
+
+    const formatted = users.map((u) => ({
+      _id: u._id,
+      name: `${u.firstName} ${u.lastName}`,
+      email: u.email,
+      phone: u.phone,
+      department: u.department,
+    }));
+
+    res.json({ users: formatted });
+  } catch (err) {
+    console.error("User search error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/my-employees", protect, async (req, res) => {
   try {
     const managerId = req.user?.id || req.user?._id || req.user;
@@ -64,7 +107,7 @@ router.get("/my-employees", protect, async (req, res) => {
 });
 
 router.get("/employee/:id", protect, async (req, res) => {
-  // ... your existing employee detail code
+  // ... your existing employee detail code (keep as is)
 });
 
 // ========== New Maintenance Routes ==========
