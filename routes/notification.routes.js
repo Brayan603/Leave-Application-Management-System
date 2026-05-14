@@ -8,7 +8,9 @@ import notificationService from "../services/notificationService.js";
 const { send, broadcast } = notificationService;
 import Notification from "../models/Notification.js";
 
-// ─── Authentication middleware ─────────────────
+/* ─────────────────────────────────────────────
+   Authentication middleware
+───────────────────────────────────────────── */
 const protect = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -29,11 +31,21 @@ const protect = async (req, res, next) => {
   }
 };
 
-// ... (all the route handlers stay exactly the same) ...
+/* ─────────────────────────────────────────────
+   Socket.IO middleware – inject io instance
+───────────────────────────────────────────── */
+const withIO = (req, res, next) => {
+  req.io = req.app.get("io");
+  next();
+};
+
+/* ─────────────────────────────────────────────
+   Apply authentication to ALL routes in this file
+───────────────────────────────────────────── */
+router.use(protect);
 
 /* ─────────────────────────────────────────────
    GET /api/notifications
-   Fetch notifications for the logged-in user
 ───────────────────────────────────────────── */
 router.get("/", async (req, res) => {
   try {
@@ -120,7 +132,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════
-   ADMIN ROUTES
+   ADMIN ROUTES (need io)
 ══════════════════════════════════════════════ */
 
 router.post("/admin/broadcast", withIO, async (req, res) => {
@@ -250,5 +262,4 @@ router.get("/admin/all", async (req, res) => {
   }
 });
 
-// ✅ Default export for ES module
 export default router;
