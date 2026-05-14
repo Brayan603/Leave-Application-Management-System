@@ -1,242 +1,230 @@
-// backend/routes/notification.routes.js
-import express from "express";
-import jwt from "jsonwebtoken";  // still needed? no, if we import protect from auth.middleware we can drop jwt
-import { protect } from "../middleware/auth.middleware.js";   // ✅ use the real protect
-import notificationService from "../services/notificationService.js";
-const { send, broadcast } = notificationService;
+// backend/services/notificationService.js
 import Notification from "../models/Notification.js";
+import emailService from "./emailService.js";
+const { sendEmail } = emailService;
+import smsService from "./smsService.js";
+const { sendSMS, sendBulkSMS } = smsService;
 
-const router = express.Router();
+/* ── Timeout wrapper ── */
+const withTimeout = (promise, ms, label = "Operation") =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
 
-/* ─────────────────────────────────────────────
-   Socket.IO middleware – inject io instance
-───────────────────────────────────────────── */
-const withIO = (req, res, next) => {
-  req.io = req.app.get("io");
-  next();
-};
-
-/* ─────────────────────────────────────────────
-   Apply authentication to ALL routes
-───────────────────────────────────────────── */
-router.use(protect);   // now uses the robust DB‑checking protect
-
-/* ─────────────────────────────────────────────
-   GET /api/notifications
-───────────────────────────────────────────── */
-router.get("/", async (req, res) => {
-  try {
-    const userId = req.user.id;    // req.user is a Mongoose doc, .id works
-    const { page = 1, limit = 20, unreadOnly = false } = req.query;
-
-    const query = { recipientId: userId };
-    if (unreadOnly === "true") query.isRead = false;
-
-    const [notifications, total, unreadCount] = await Promise.all([
-      Notification.find(query)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit))
-        .lean(),
-      Notification.countDocuments(query),
-      Notification.countDocuments({ recipientId: userId, isRead: false }),
-    ]);
-
-    res.json({ notifications, total, unreadCount, page: parseInt(page) });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─────────────────────────────────────────────
-   GET /api/notifications/unread-count
-───────────────────────────────────────────── */
-router.get("/unread-count", async (req, res) => {
-  try {
-    const count = await Notification.countDocuments({
-      recipientId: req.user.id,
-      isRead: false,
-    });
-    res.json({ count });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─────────────────────────────────────────────
-   PATCH /api/notifications/:id/read
-───────────────────────────────────────────── */
-router.patch("/:id/read", async (req, res) => {
-  try {
-    await Notification.findOneAndUpdate(
-      { _id: req.params.id, recipientId: req.user.id },
-      { isRead: true, readAt: new Date(), "status.in_app": "read" }
-    );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─────────────────────────────────────────────
-   PATCH /api/notifications/mark-all-read
-───────────────────────────────────────────── */
-router.patch("/mark-all-read", async (req, res) => {
-  try {
-    await Notification.updateMany(
-      { recipientId: req.user.id, isRead: false },
-      { isRead: true, readAt: new Date(), "status.in_app": "read" }
-    );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─────────────────────────────────────────────
-   DELETE /api/notifications/:id
-───────────────────────────────────────────── */
-router.delete("/:id", async (req, res) => {
-  try {
-    await Notification.findOneAndDelete({
-      _id: req.params.id,
-      recipientId: req.user.id,
-    });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ═══════════════════════════════════════════
-   ADMIN ROUTES (need io)
-══════════════════════════════════════════════ */
-
-router.post("/admin/broadcast", withIO, async (req, res) => {
-  try {
-    const {
-      title,
-      message,
-      channels = ["in_app", "email"],
-      priority = "normal",
-      recipients,
-      type = "broadcast",
-    } = req.body;
-
-    if (!title || !message || !recipients?.length) {
-      return res.status(400).json({ error: "title, message, and recipients are required" });
-    }
-
-    const result = await broadcast({
-      senderId:   req.user.id,
-      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
+const notificationService = {
+  /* ─────────────────────────────────────────────
+     send()
+     Single-recipient notification across
+     any combination of channels
+  ───────────────────────────────────────────── */
+  send: async ({
+    recipientId,
+    recipientEmail = null,
+    recipientPhone = null,
+    senderId = null,
+    senderName = "System",
+    type,
+    title,
+    message,
+    channels = ["in_app"],
+    priority = "normal",
+    metadata = {},
+    io = null,
+  }) => {
+    /* 1. Persist to DB */
+    const notification = await Notification.create({
+      recipientId,
+      recipientEmail,
+      recipientPhone,
+      senderId,
+      senderName,
       type,
       title,
       message,
-      channels,
       priority,
-      recipients,
-      io: req.io,
+      channels,
+      status: {
+        in_app: channels.includes("in_app") ? "delivered" : "skipped",
+        email:  channels.includes("email")  ? "pending"   : "skipped",
+        sms:    channels.includes("sms")    ? "pending"   : "skipped",
+      },
+      metadata,
     });
 
-    res.json({ success: true, ...result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post("/admin/secure-message", withIO, async (req, res) => {
-  try {
-    const {
-      recipientId,
-      recipientEmail,
-      recipientPhone,
-      recipientName,
-      message,
-      channels = ["in_app", "email"],
-    } = req.body;
-
-    if (!recipientId || !message) {
-      return res.status(400).json({ error: "recipientId and message are required" });
+    /* 2. Real-time in-app via Socket.io */
+    if (channels.includes("in_app") && io) {
+      io.to(`user_${recipientId}`).emit("notification:new", {
+        id:        notification._id,
+        type,
+        title,
+        message,
+        priority,
+        isRead:    false,
+        createdAt: notification.createdAt,
+      });
+      io.to(`user_${recipientId}`).emit("notification:count", { increment: 1 });
     }
 
-    const notification = await send({
-      recipientId,
-      recipientEmail,
-      recipientPhone,
-      senderId:   req.user.id,
-      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
-      type:    "secure_message",
-      title:   `Secure message from ${req.user.name || req.user.firstName}`,
-      message,
-      channels,
+    /* 3. Email – fire and forget with timeout */
+    if (channels.includes("email") && recipientEmail) {
+      withTimeout(
+        sendEmail({ to: recipientEmail, type, data: { title, message, ...metadata } }),
+        5000,
+        "Email send"
+      )
+        .then(async () => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.email": "sent" });
+          console.log(`[NotificationService] Email sent to ${recipientEmail}`);
+        })
+        .catch(async (err) => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.email": "failed" });
+          console.error(`[NotificationService] Email failed for ${recipientEmail}:`, err.message);
+        });
+    }
+
+    /* 4. SMS – fire and forget with timeout */
+    if (channels.includes("sms") && recipientPhone) {
+      withTimeout(
+        sendSMS({ to: recipientPhone, type, data: { title, message, ...metadata } }),
+        5000,
+        "SMS send"
+      )
+        .then(async () => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.sms": "sent" });
+          console.log(`[NotificationService] SMS sent to ${recipientPhone}`);
+        })
+        .catch(async (err) => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.sms": "failed" });
+          console.error(`[NotificationService] SMS failed for ${recipientPhone}:`, err.message);
+        });
+    }
+
+    return notification;
+  },
+
+  /* ─────────────────────────────────────────────
+     broadcast()
+  ───────────────────────────────────────────── */
+  broadcast: async ({ recipients, ...rest }) => {
+    const results = await Promise.allSettled(
+      recipients.map((r) =>
+        notificationService.send({
+          recipientId:    r.id,
+          recipientEmail: r.email || null,
+          recipientPhone: r.phone || null,
+          metadata:       { ...rest.metadata, recipientName: r.name },
+          ...rest,
+        })
+      )
+    );
+
+    const succeeded = results.filter((r) => r.status === "fulfilled").length;
+    const failed    = results.filter((r) => r.status === "rejected").length;
+    console.log(`[NotificationService] Broadcast: ${succeeded} sent, ${failed} failed`);
+    return { succeeded, failed, results };
+  },
+
+  /* ─────────────────────────────────────────────
+     Helper shortcuts
+  ───────────────────────────────────────────── */
+  notifyLeaveSubmitted: (employee, manager, leaveData, io) =>
+    notificationService.send({
+      recipientId:    manager.id,
+      recipientEmail: manager.email,
+      recipientPhone: manager.phone,
+      type:    "leave_submitted",
+      title:   "New Leave Request",
+      message: `${employee.name} has submitted a ${leaveData.leaveType} request.`,
+      channels: ["in_app", "email", "sms"],
+      metadata: {
+        employeeName: employee.name,
+        leaveType:    leaveData.leaveType,
+        startDate:    leaveData.startDate,
+        endDate:      leaveData.endDate,
+        days:         leaveData.days,
+        reason:       leaveData.reason,
+        recipientName: manager.name,
+      },
+      io,
+    }),
+
+  notifyLeaveApproved: (employee, approver, leaveData, io) =>
+    notificationService.send({
+      recipientId:    employee.id,
+      recipientEmail: employee.email,
+      recipientPhone: employee.phone,
+      type:    "leave_approved",
+      title:   "Leave Approved ✅",
+      message: `Your ${leaveData.leaveType} from ${leaveData.startDate} to ${leaveData.endDate} has been approved.`,
+      channels: ["in_app", "email", "sms"],
+      metadata: {
+        employeeName: employee.name,
+        leaveType:    leaveData.leaveType,
+        startDate:    leaveData.startDate,
+        endDate:      leaveData.endDate,
+        days:         leaveData.days,
+        approvedBy:   approver.name,
+        comment:      leaveData.comment,
+      },
+      io,
+    }),
+
+  notifyLeaveRejected: (employee, rejector, leaveData, io) =>
+    notificationService.send({
+      recipientId:    employee.id,
+      recipientEmail: employee.email,
+      recipientPhone: employee.phone,
+      type:    "leave_rejected",
+      title:   "Leave Request Rejected",
+      message: `Your ${leaveData.leaveType} request has been rejected.`,
+      channels: ["in_app", "email", "sms"],
       priority: "high",
-      metadata: { recipientName, senderName: req.user.name },
-      io: req.io,
-    });
+      metadata: {
+        employeeName: employee.name,
+        leaveType:    leaveData.leaveType,
+        startDate:    leaveData.startDate,
+        endDate:      leaveData.endDate,
+        rejectedBy:   rejector.name,
+        reason:       leaveData.reason,
+      },
+      io,
+    }),
 
-    res.json({ success: true, notification });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  notifyLeaveBalanceLow: (employee, balanceData, io) =>
+    notificationService.send({
+      recipientId:    employee.id,
+      recipientEmail: employee.email,
+      recipientPhone: employee.phone,
+      type:    "leave_balance_low",
+      title:   "Low Leave Balance",
+      message: `Your ${balanceData.leaveType} balance is running low (${balanceData.balance} days left).`,
+      channels: ["in_app", "email"],
+      metadata: { ...balanceData, employeeName: employee.name },
+      io,
+    }),
 
-router.post("/admin/announcement", withIO, async (req, res) => {
-  try {
-    const {
-      title,
-      message,
-      channels = ["in_app", "email"],
-      recipients,
-      actionUrl,
-      actionLabel,
-    } = req.body;
+  notifyAccountAction: (employee, admin, action, reason, io) =>
+    notificationService.send({
+      recipientId:    employee.id,
+      recipientEmail: employee.email,
+      recipientPhone: employee.phone,
+      type:    "account_action",
+      title:   `Account ${action}`,
+      message: `Your account has been ${action.toLowerCase()} by an administrator.`,
+      channels: ["in_app", "email", "sms"],
+      priority: "urgent",
+      metadata: {
+        employeeName: employee.name,
+        action,
+        reason,
+        adminName: admin.name,
+        date: new Date().toLocaleDateString(),
+      },
+      io,
+    }),
+};
 
-    const result = await broadcast({
-      senderId:   req.user.id,
-      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
-      type:    "announcement",
-      title,
-      message,
-      channels,
-      priority: "normal",
-      recipients,
-      metadata: { actionUrl, actionLabel },
-      io: req.io,
-    });
-
-    res.json({ success: true, ...result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get("/admin/all", async (req, res) => {
-  try {
-    const { page = 1, limit = 50, type, recipientId, dateFrom, dateTo } = req.query;
-
-    const query = {};
-    if (type)        query.type = type;
-    if (recipientId) query.recipientId = recipientId;
-    if (dateFrom || dateTo) {
-      query.createdAt = {};
-      if (dateFrom) query.createdAt.$gte = new Date(dateFrom);
-      if (dateTo)   query.createdAt.$lte = new Date(dateTo);
-    }
-
-    const [notifications, total] = await Promise.all([
-      Notification.find(query)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit))
-        .lean(),
-      Notification.countDocuments(query),
-    ]);
-
-    res.json({ notifications, total, page: parseInt(page) });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-export default router;
+export default notificationService;
