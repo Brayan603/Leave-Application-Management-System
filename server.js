@@ -15,7 +15,8 @@ import leaveBalanceRoutes from "./routes/leaveBalance.routes.js";
 import entitlementRoutes from "./routes/entitlement.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import jobRoleRoutes from "./routes/jobRole.routes.js";
-import notificationRoutes from "./routes/notification.routes.js";
+
+
 dotenv.config();
 
 const app = express();
