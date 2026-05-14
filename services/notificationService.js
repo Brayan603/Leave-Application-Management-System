@@ -2,6 +2,9 @@
 // Central service — call this from anywhere in the app
 // (leave controller, user-access controller, admin messenger, etc.)
 
+import notificationService from "../services/notificationService.js";
+const { send, broadcast } = notificationService;
+
 const Notification = require("../models/Notification");
 const { sendEmail } = require("./emailService");
 const { sendSMS, sendBulkSMS } = require("./smsService");
