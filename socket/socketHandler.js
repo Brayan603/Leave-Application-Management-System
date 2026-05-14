@@ -1,26 +1,18 @@
 // backend/socket/socketHandler.js
-// Attach to your Express server:
-//
-//   const { createServer } = require("http");
-//   const { initSocket }   = require("./socket/socketHandler");
-//   const httpServer = createServer(app);
-//   const io = initSocket(httpServer);
-//   app.set("io", io);          ← makes io available in routes
-//   httpServer.listen(PORT);
-
-const { Server } = require("socket.io");
-const jwt = require("jsonwebtoken"); // npm install jsonwebtoken
+import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
+import Notification from "../models/Notification.js";
 
 let ioInstance = null;
 
-const initSocket = (httpServer) => {
+export const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
     cors: {
-      origin:      process.env.CLIENT_URL || "http://localhost:3000",
-      methods:     ["GET", "POST"],
+      origin: process.env.CLIENT_URL || "https://leave-management20-systems.vercel.app/",
+      methods: ["GET", "POST"],
       credentials: true,
     },
-    pingTimeout:  60000,
+    pingTimeout: 60000,
     pingInterval: 25000,
   });
 
@@ -31,7 +23,7 @@ const initSocket = (httpServer) => {
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.userId   = decoded.id || decoded.sub;
+      socket.userId = decoded.id || decoded.sub;
       socket.userRole = decoded.role;
       next();
     } catch {
@@ -44,21 +36,13 @@ const initSocket = (httpServer) => {
     const { userId, userRole } = socket;
     console.log(`[Socket] User ${userId} connected (${socket.id})`);
 
-    /* Join personal room → used by notificationService to target user */
     socket.join(`user_${userId}`);
 
-    /* Admins also join the admin room for admin-only broadcasts */
-    if (userRole === "admin") {
-      socket.join("room_admin");
-    }
-    if (userRole === "manager") {
-      socket.join("room_manager");
-    }
+    if (userRole === "admin") socket.join("room_admin");
+    if (userRole === "manager") socket.join("room_manager");
 
-    /* Client acknowledges notification was read */
     socket.on("notification:read", async (notificationId) => {
       try {
-        const Notification = require("../models/Notification");
         await Notification.findOneAndUpdate(
           { _id: notificationId, recipientId: userId },
           { isRead: true, readAt: new Date(), "status.in_app": "read" }
@@ -68,10 +52,8 @@ const initSocket = (httpServer) => {
       }
     });
 
-    /* Client requests unread count on reconnect */
     socket.on("notification:getCount", async () => {
       try {
-        const Notification = require("../models/Notification");
         const count = await Notification.countDocuments({
           recipientId: userId,
           isRead: false,
@@ -91,10 +73,7 @@ const initSocket = (httpServer) => {
   return io;
 };
 
-/* Access io instance outside of route context */
-const getIO = () => {
+export const getIO = () => {
   if (!ioInstance) throw new Error("Socket.io not initialised");
   return ioInstance;
 };
-
-module.exports = { initSocket, getIO };
