@@ -1,11 +1,5 @@
 // backend/services/smsService.js
-// npm install africastalking
-// Env vars: AT_API_KEY, AT_USERNAME, AT_SENDER_ID (optional shortcode)
-
-import notificationService from "../services/notificationService.js";
-const { send, broadcast } = notificationService;
-
-const AfricasTalking = require("africastalking");
+import AfricasTalking from "africastalking";
 
 let smsClient = null;
 
@@ -23,10 +17,7 @@ const getClient = () => {
   return smsClient;
 };
 
-/* ─────────────────────────────────────────────
-   Message builders (keep under 160 chars for
-   single SMS, 306 for concatenated)
-───────────────────────────────────────────── */
+/* ── Message templates ── */
 const smsTemplates = {
   leave_submitted: (d) =>
     `[LMS] ${d.employeeName} submitted a ${d.leaveType} request (${d.startDate}–${d.endDate}). Review in the system.`,
@@ -53,15 +44,10 @@ const smsTemplates = {
     `[LMS] Secure message from ${d.senderName}. Please check your portal for details.`,
 };
 
-/* ─────────────────────────────────────────────
-   sendSMS – send to one or many recipients
-   `to` can be a string or array of strings
-   Phone format: +254XXXXXXXXX
-───────────────────────────────────────────── */
+/* ── sendSMS ── */
 const sendSMS = async ({ to, type, data, customMessage }) => {
   const client = getClient();
 
-  // Build message text
   let message;
   if (customMessage) {
     message = customMessage;
@@ -71,13 +57,11 @@ const sendSMS = async ({ to, type, data, customMessage }) => {
     message = templateFn(data);
   }
 
-  // Normalise to array
   const recipients = Array.isArray(to) ? to : [to];
 
-  // AT requires E.164 format: +254...
+  // Normalize to E.164 (+254...)
   const normalised = recipients.map((num) => {
     const cleaned = num.replace(/\s+/g, "");
-    // Convert 07xx → +2547xx (Kenya)
     if (cleaned.startsWith("07") || cleaned.startsWith("01")) {
       return "+254" + cleaned.slice(1);
     }
@@ -110,10 +94,7 @@ const sendSMS = async ({ to, type, data, customMessage }) => {
   }
 };
 
-/* ─────────────────────────────────────────────
-   Bulk SMS helper (for broadcasts)
-   Splits into batches of 1000 (AT limit)
-───────────────────────────────────────────── */
+/* ── sendBulkSMS ── */
 const sendBulkSMS = async ({ recipients, type, data, customMessage }) => {
   const BATCH_SIZE = 1000;
   const results = [];
@@ -126,7 +107,6 @@ const sendBulkSMS = async ({ recipients, type, data, customMessage }) => {
     } catch (err) {
       results.push({ success: false, batch: i, error: err.message });
     }
-    // Small delay between batches
     if (i + BATCH_SIZE < recipients.length) {
       await new Promise((r) => setTimeout(r, 500));
     }
@@ -135,4 +115,4 @@ const sendBulkSMS = async ({ recipients, type, data, customMessage }) => {
   return results;
 };
 
-module.exports = { sendSMS, sendBulkSMS };
+export default { sendSMS, sendBulkSMS };
