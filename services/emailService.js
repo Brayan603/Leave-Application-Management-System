@@ -1,24 +1,17 @@
 // backend/services/emailService.js
-const nodemailer = require("nodemailer");
+import nodemailer from "nodemailer";
 
-/* ─────────────────────────────────────────────
-   Transporter — configure via .env
-   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
-   Supports Gmail, Outlook, custom SMTP
-───────────────────────────────────────────── */
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.SMTP_PORT, 10) || 587,
-  secure: process.env.SMTP_SECURE === "true", // true for port 465
+  host:   process.env.SMTP_HOST || "smtp.gmail.com",
+  port:   parseInt(process.env.SMTP_PORT, 10) || 587,
+  secure: process.env.SMTP_SECURE === "true",
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,  // use App Password for Gmail
+    pass: process.env.SMTP_PASS,
   },
 });
 
-/* ─────────────────────────────────────────────
-   Shared HTML wrapper
-───────────────────────────────────────────── */
+/* ── Shared HTML wrapper ── */
 const wrap = (title, body) => `
 <!DOCTYPE html>
 <html lang="en">
@@ -31,26 +24,23 @@ const wrap = (title, body) => `
     body { font-family: 'Segoe UI', Arial, sans-serif; background:#f1f5f9; color:#1e293b; }
     .container { max-width:600px; margin:32px auto; background:#fff;
       border-radius:12px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.08); }
-    .header { background:linear-gradient(135deg,#6366f1,#8b5cf6);
-      padding:32px 40px; color:#fff; }
+    .header { background:linear-gradient(135deg,#6366f1,#8b5cf6); padding:32px 40px; color:#fff; }
     .header h1 { font-size:22px; font-weight:700; margin-bottom:4px; }
     .header p  { font-size:13px; opacity:.85; }
     .body { padding:32px 40px; }
-    .body p  { font-size:15px; line-height:1.7; margin-bottom:16px; }
+    .body p { font-size:15px; line-height:1.7; margin-bottom:16px; }
     .info-box { background:#f8fafc; border-left:4px solid #6366f1;
       padding:16px 20px; border-radius:6px; margin:20px 0; }
     .info-box p { margin:0; font-size:14px; }
-    .badge { display:inline-block; padding:4px 12px; border-radius:20px;
-      font-size:12px; font-weight:600; }
-    .badge-success  { background:#dcfce7; color:#166534; }
-    .badge-warning  { background:#fef9c3; color:#854d0e; }
-    .badge-danger   { background:#fee2e2; color:#991b1b; }
-    .badge-info     { background:#dbeafe; color:#1e40af; }
+    .badge { display:inline-block; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; }
+    .badge-success { background:#dcfce7; color:#166534; }
+    .badge-warning { background:#fef9c3; color:#854d0e; }
+    .badge-danger  { background:#fee2e2; color:#991b1b; }
+    .badge-info    { background:#dbeafe; color:#1e40af; }
     .footer { padding:20px 40px; background:#f8fafc;
       border-top:1px solid #e2e8f0; font-size:12px; color:#94a3b8; text-align:center; }
     .btn { display:inline-block; padding:12px 24px; background:#6366f1;
-      color:#fff; text-decoration:none; border-radius:8px;
-      font-weight:600; font-size:14px; margin-top:8px; }
+      color:#fff; text-decoration:none; border-radius:8px; font-weight:600; font-size:14px; margin-top:8px; }
   </style>
 </head>
 <body>
@@ -68,14 +58,11 @@ const wrap = (title, body) => `
 </body>
 </html>`;
 
-/* ─────────────────────────────────────────────
-   Templates  (type → { subject, html })
-───────────────────────────────────────────── */
+/* ── Templates ── */
 const templates = {
   leave_submitted: (d) => ({
     subject: `Leave Request Submitted – ${d.employeeName}`,
-    html: wrap(
-      "Leave Request Submitted",
+    html: wrap("Leave Request Submitted",
       `<p>Hello <strong>${d.recipientName || "Manager"}</strong>,</p>
        <p>A new leave request has been submitted and requires your attention.</p>
        <div class="info-box">
@@ -91,8 +78,7 @@ const templates = {
 
   leave_approved: (d) => ({
     subject: `✅ Leave Approved – ${d.startDate} to ${d.endDate}`,
-    html: wrap(
-      "Leave Approved",
+    html: wrap("Leave Approved",
       `<p>Hello <strong>${d.employeeName}</strong>,</p>
        <p>Your leave request has been <span class="badge badge-success">Approved</span>.</p>
        <div class="info-box">
@@ -107,8 +93,7 @@ const templates = {
 
   leave_rejected: (d) => ({
     subject: `❌ Leave Request Rejected`,
-    html: wrap(
-      "Leave Rejected",
+    html: wrap("Leave Rejected",
       `<p>Hello <strong>${d.employeeName}</strong>,</p>
        <p>Your leave request has been <span class="badge badge-danger">Rejected</span>.</p>
        <div class="info-box">
@@ -123,8 +108,7 @@ const templates = {
 
   leave_balance_low: (d) => ({
     subject: `⚠️ Low Leave Balance Alert`,
-    html: wrap(
-      "Low Leave Balance",
+    html: wrap("Low Leave Balance",
       `<p>Hello <strong>${d.employeeName}</strong>,</p>
        <p>Your <strong>${d.leaveType}</strong> balance is running low.</p>
        <div class="info-box">
@@ -137,8 +121,7 @@ const templates = {
 
   account_action: (d) => ({
     subject: `🔔 Account Update – ${d.action}`,
-    html: wrap(
-      "Account Action",
+    html: wrap("Account Action",
       `<p>Hello <strong>${d.employeeName}</strong>,</p>
        <p>An administrative action has been applied to your account.</p>
        <div class="info-box">
@@ -153,8 +136,7 @@ const templates = {
 
   broadcast: (d) => ({
     subject: `📢 ${d.title}`,
-    html: wrap(
-      d.title,
+    html: wrap(d.title,
       `<p>Hello <strong>${d.recipientName || "Team Member"}</strong>,</p>
        <p>${d.message}</p>
        ${d.actionUrl ? `<a class="btn" href="${d.actionUrl}">${d.actionLabel || "View"}</a>` : ""}`
@@ -163,8 +145,7 @@ const templates = {
 
   announcement: (d) => ({
     subject: `📌 Announcement: ${d.title}`,
-    html: wrap(
-      d.title,
+    html: wrap(d.title,
       `<p>Hello <strong>${d.recipientName || "Team Member"}</strong>,</p>
        <div class="info-box"><p>${d.message}</p></div>
        ${d.actionUrl ? `<a class="btn" href="${d.actionUrl}">Read More</a>` : ""}`
@@ -173,8 +154,7 @@ const templates = {
 
   secure_message: (d) => ({
     subject: `🔒 Secure Message from ${d.senderName}`,
-    html: wrap(
-      "Secure Message",
+    html: wrap("Secure Message",
       `<p>Hello <strong>${d.recipientName}</strong>,</p>
        <p>You have received a secure message from <strong>${d.senderName}</strong>.</p>
        <div class="info-box"><p>${d.message}</p></div>
@@ -185,10 +165,8 @@ const templates = {
   }),
 };
 
-/* ─────────────────────────────────────────────
-   sendEmail  – main export
-───────────────────────────────────────────── */
-const sendEmail = async ({ to, type, data }) => {
+/* ── sendEmail ── */
+export const sendEmail = async ({ to, type, data }) => {
   const templateFn = templates[type];
   if (!templateFn) throw new Error(`Unknown email template type: "${type}"`);
 
@@ -205,8 +183,8 @@ const sendEmail = async ({ to, type, data }) => {
   return info;
 };
 
-/* Verify transporter on startup (optional) */
-const verifyConnection = async () => {
+/* ── verifyConnection ── */
+export const verifyConnection = async () => {
   try {
     await transporter.verify();
     console.log("[Email] SMTP connection verified ✓");
@@ -214,5 +192,3 @@ const verifyConnection = async () => {
     console.warn("[Email] SMTP connection failed:", err.message);
   }
 };
-
-module.exports = { sendEmail, verifyConnection };
