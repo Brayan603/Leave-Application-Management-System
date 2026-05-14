@@ -2,6 +2,9 @@
 // npm install africastalking
 // Env vars: AT_API_KEY, AT_USERNAME, AT_SENDER_ID (optional shortcode)
 
+import notificationService from "../services/notificationService.js";
+const { send, broadcast } = notificationService;
+
 const AfricasTalking = require("africastalking");
 
 let smsClient = null;
