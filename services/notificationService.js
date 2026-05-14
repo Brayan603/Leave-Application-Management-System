@@ -5,6 +5,15 @@ const { sendEmail } = emailService;
 import smsService from "./smsService.js";
 const { sendSMS, sendBulkSMS } = smsService;
 
+/* ── Timeout wrapper ── */
+const withTimeout = (promise, ms, label = "Operation") =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+
 const notificationService = {
   /* ─────────────────────────────────────────────
      send()
@@ -59,26 +68,38 @@ const notificationService = {
       io.to(`user_${recipientId}`).emit("notification:count", { increment: 1 });
     }
 
-    /* 3. Email */
+    /* 3. Email – fire and forget with timeout */
     if (channels.includes("email") && recipientEmail) {
-      try {
-        await sendEmail({ to: recipientEmail, type, data: { title, message, ...metadata } });
-        await Notification.findByIdAndUpdate(notification._id, { "status.email": "sent" });
-      } catch (err) {
-        await Notification.findByIdAndUpdate(notification._id, { "status.email": "failed" });
-        console.error(`[NotificationService] Email failed for ${recipientEmail}:`, err.message);
-      }
+      withTimeout(
+        sendEmail({ to: recipientEmail, type, data: { title, message, ...metadata } }),
+        5000,
+        "Email send"
+      )
+        .then(async () => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.email": "sent" });
+          console.log(`[NotificationService] Email sent to ${recipientEmail}`);
+        })
+        .catch(async (err) => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.email": "failed" });
+          console.error(`[NotificationService] Email failed for ${recipientEmail}:`, err.message);
+        });
     }
 
-    /* 4. SMS */
+    /* 4. SMS – fire and forget with timeout */
     if (channels.includes("sms") && recipientPhone) {
-      try {
-        await sendSMS({ to: recipientPhone, type, data: { title, message, ...metadata } });
-        await Notification.findByIdAndUpdate(notification._id, { "status.sms": "sent" });
-      } catch (err) {
-        await Notification.findByIdAndUpdate(notification._id, { "status.sms": "failed" });
-        console.error(`[NotificationService] SMS failed for ${recipientPhone}:`, err.message);
-      }
+      withTimeout(
+        sendSMS({ to: recipientPhone, type, data: { title, message, ...metadata } }),
+        5000,
+        "SMS send"
+      )
+        .then(async () => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.sms": "sent" });
+          console.log(`[NotificationService] SMS sent to ${recipientPhone}`);
+        })
+        .catch(async (err) => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.sms": "failed" });
+          console.error(`[NotificationService] SMS failed for ${recipientPhone}:`, err.message);
+        });
     }
 
     return notification;
