@@ -1,8 +1,11 @@
-// backend/routes/notificationRoutes.js
-const express = require("express");
-const router  = express.Router();
-const Notification = require("../models/Notification");
-const { send, broadcast } = require("../services/notificationService");
+// backend/routes/notification.routes.js
+import express from "express";
+const router = express.Router();
+
+// ESM imports – import the whole service object then destructure
+import notificationService from "../services/notificationService.js";
+const { send, broadcast } = notificationService;
+import Notification from "../models/Notification.js";
 
 // Middleware: attach io from app
 const withIO = (req, res, next) => {
@@ -16,7 +19,7 @@ const withIO = (req, res, next) => {
 ───────────────────────────────────────────── */
 router.get("/", async (req, res) => {
   try {
-    const userId = req.user.id; // from your auth middleware
+    const userId = req.user.id;
     const { page = 1, limit = 20, unreadOnly = false } = req.query;
 
     const query = { recipientId: userId };
@@ -99,13 +102,9 @@ router.delete("/:id", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════
-   ADMIN ROUTES  (require admin role)
+   ADMIN ROUTES
 ══════════════════════════════════════════════ */
 
-/* ─────────────────────────────────────────────
-   POST /api/notifications/admin/broadcast
-   Send a message to all users (or specific dept)
-───────────────────────────────────────────── */
 router.post("/admin/broadcast", withIO, async (req, res) => {
   try {
     const {
@@ -113,7 +112,7 @@ router.post("/admin/broadcast", withIO, async (req, res) => {
       message,
       channels = ["in_app", "email"],
       priority = "normal",
-      recipients,  // [{ id, email, phone, name }]
+      recipients,
       type = "broadcast",
     } = req.body;
 
@@ -139,10 +138,6 @@ router.post("/admin/broadcast", withIO, async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────
-   POST /api/notifications/admin/secure-message
-   Admin → specific user (back-office secure msg)
-───────────────────────────────────────────── */
 router.post("/admin/secure-message", withIO, async (req, res) => {
   try {
     const {
@@ -179,9 +174,6 @@ router.post("/admin/secure-message", withIO, async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────
-   POST /api/notifications/admin/announcement
-───────────────────────────────────────────── */
 router.post("/admin/announcement", withIO, async (req, res) => {
   try {
     const {
@@ -191,7 +183,6 @@ router.post("/admin/announcement", withIO, async (req, res) => {
       recipients,
       actionUrl,
       actionLabel,
-      expiresAt,
     } = req.body;
 
     const result = await broadcast({
@@ -213,18 +204,9 @@ router.post("/admin/announcement", withIO, async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────
-   GET /api/notifications/admin/all
-   Admin view — all notifications with filters
-───────────────────────────────────────────── */
 router.get("/admin/all", async (req, res) => {
   try {
-    const {
-      page = 1, limit = 50,
-      type, recipientId,
-      dateFrom, dateTo,
-      status,
-    } = req.query;
+    const { page = 1, limit = 50, type, recipientId, dateFrom, dateTo } = req.query;
 
     const query = {};
     if (type)        query.type = type;
@@ -250,4 +232,5 @@ router.get("/admin/all", async (req, res) => {
   }
 });
 
-module.exports = router;
+// ✅ Default export for ES module
+export default router;
