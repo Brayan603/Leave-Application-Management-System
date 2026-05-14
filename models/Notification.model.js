@@ -1,5 +1,5 @@
 // backend/models/Notification.js
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const deliveryStatusSchema = new mongoose.Schema(
   {
@@ -25,12 +25,12 @@ const deliveryStatusSchema = new mongoose.Schema(
 const notificationSchema = new mongoose.Schema(
   {
     /* ── Recipients ── */
-    recipientId: { type: String, required: true, index: true },
+    recipientId:    { type: String, required: true, index: true },
     recipientEmail: { type: String, default: null },
-    recipientPhone: { type: String, default: null }, // E.164 e.g. +254712345678
+    recipientPhone: { type: String, default: null },
 
-    /* ── Sender (for secure messages / admin messages) ── */
-    senderId: { type: String, default: null },
+    /* ── Sender ── */
+    senderId:   { type: String, default: null },
     senderName: { type: String, default: "System" },
 
     /* ── Content ── */
@@ -41,14 +41,14 @@ const notificationSchema = new mongoose.Schema(
         "leave_approved",
         "leave_rejected",
         "leave_balance_low",
-        "account_action",    // disable, close, enable, etc.
-        "broadcast",         // admin → all users
-        "announcement",      // pinned org-wide notice
-        "secure_message",    // admin → specific user (back-office)
+        "account_action",
+        "broadcast",
+        "announcement",
+        "secure_message",
       ],
       required: true,
     },
-    title: { type: String, required: true, maxlength: 200 },
+    title:   { type: String, required: true, maxlength: 200 },
     message: { type: String, required: true, maxlength: 2000 },
     priority: {
       type: String,
@@ -56,33 +56,28 @@ const notificationSchema = new mongoose.Schema(
       default: "normal",
     },
 
-    /* ── Channels requested ── */
+    /* ── Channels ── */
     channels: {
       type: [{ type: String, enum: ["in_app", "email", "sms"] }],
       default: ["in_app"],
     },
 
-    /* ── Delivery status per channel ── */
+    /* ── Delivery status ── */
     status: { type: deliveryStatusSchema, default: () => ({}) },
 
     /* ── Read state ── */
     isRead: { type: Boolean, default: false, index: true },
-    readAt: { type: Date, default: null },
+    readAt: { type: Date,    default: null },
 
-    /* ── Extra payload (leaveId, actionType, etc.) ── */
-    metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-
-    /* ── Soft expiry (for announcements, broadcasts) ── */
+    /* ── Extra payload ── */
+    metadata:  { type: mongoose.Schema.Types.Mixed, default: {} },
     expiresAt: { type: Date, default: null },
   },
-  {
-    timestamps: true, // adds createdAt + updatedAt
-  }
+  { timestamps: true }
 );
 
-/* ── Compound indexes for common queries ── */
 notificationSchema.index({ recipientId: 1, createdAt: -1 });
 notificationSchema.index({ recipientId: 1, isRead: 1 });
 notificationSchema.index({ type: 1, createdAt: -1 });
 
-module.exports = mongoose.model("Notification", notificationSchema);
+export default mongoose.model("Notification", notificationSchema);
