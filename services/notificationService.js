@@ -1,121 +1,129 @@
-// src/hooks/useNotifications.js
-import { useState, useEffect, useCallback } from "react";
+// backend/services/notificationService.js
+import Notification from "../models/Notification.js";
+import emailService from "./emailService.js";
+const { sendEmail } = emailService;
+import smsService from "./smsService.js";
+const { sendSMS, sendBulkSMS } = smsService;
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://leave-application-management-system-up1h.onrender.com";
-const NOTIFICATION_API = `${API_BASE}/api/notifications`;
+/* ── Timeout wrapper ── */
+const withTimeout = (promise, ms, label = "Operation") =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
 
-export const useNotifications = () => {
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const token = localStorage.getItem("token");
+const notificationService = {
+  send: async ({
+    recipientId,
+    recipientEmail = null,
+    recipientPhone = null,
+    senderId = null,
+    senderName = "System",
+    type,
+    title,
+    message,
+    channels = ["in_app"],
+    priority = "normal",
+    metadata = {},
+    io = null,
+  }) => {
+    const notification = await Notification.create({
+      recipientId,
+      recipientEmail,
+      recipientPhone,
+      senderId,
+      senderName,
+      type,
+      title,
+      message,
+      priority,
+      channels,
+      status: {
+        in_app: channels.includes("in_app") ? "delivered" : "skipped",
+        email:  channels.includes("email")  ? "pending"   : "skipped",
+        sms:    channels.includes("sms")    ? "pending"   : "skipped",
+      },
+      metadata,
+    });
 
-  const fetchUnreadCount = useCallback(async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${NOTIFICATION_API}/unread-count`, {
-        headers: { Authorization: `Bearer ${token}` },
+    if (channels.includes("in_app") && io) {
+      io.to(`user_${recipientId}`).emit("notification:new", {
+        id: notification._id,
+        type,
+        title,
+        message,
+        priority,
+        isRead: false,
+        createdAt: notification.createdAt,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setUnreadCount(data.count || 0);
-      }
-    } catch (err) {
-      console.error("fetchUnreadCount failed:", err);
+      io.to(`user_${recipientId}`).emit("notification:count", { increment: 1 });
     }
-  }, [token]);
 
-  const fetchNotifications = useCallback(async (pageNum = 1) => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${NOTIFICATION_API}?page=${pageNum}&limit=10`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch");
-      const data = await res.json();
-      const list = Array.isArray(data.notifications) ? data.notifications : [];
-      if (pageNum === 1) {
-        setNotifications(list);
-      } else {
-        setNotifications((prev) => [...prev, ...list]);
-      }
-      setHasMore(data.total > pageNum * 10);
-      fetchUnreadCount();
-    } catch (err) {
-      console.error("fetchNotifications failed:", err);
-    } finally {
-      setLoading(false);
+    if (channels.includes("email") && recipientEmail) {
+      withTimeout(
+        sendEmail({ to: recipientEmail, type, data: { title, message, ...metadata } }),
+        5000,
+        "Email send"
+      )
+        .then(async () => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.email": "sent" });
+          console.log(`[NotificationService] Email sent to ${recipientEmail}`);
+        })
+        .catch(async (err) => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.email": "failed" });
+          console.error(`[NotificationService] Email failed for ${recipientEmail}:`, err.message);
+        });
     }
-  }, [token, fetchUnreadCount]);
 
-  useEffect(() => {
-    fetchNotifications(1);
-  }, [fetchNotifications]);
-
-  const markRead = async (id) => {
-    try {
-      await fetch(`${NOTIFICATION_API}/${id}/read`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setNotifications((prev) =>
-        prev.map((n) =>
-          (n._id === id || n.id === id) ? { ...n, isRead: true } : n
-        )
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (err) {
-      console.error("markRead failed", err);
+    if (channels.includes("sms") && recipientPhone) {
+      withTimeout(
+        sendSMS({ to: recipientPhone, type, data: { title, message, ...metadata } }),
+        5000,
+        "SMS send"
+      )
+        .then(async () => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.sms": "sent" });
+          console.log(`[NotificationService] SMS sent to ${recipientPhone}`);
+        })
+        .catch(async (err) => {
+          await Notification.findByIdAndUpdate(notification._id, { "status.sms": "failed" });
+          console.error(`[NotificationService] SMS failed for ${recipientPhone}:`, err.message);
+        });
     }
-  };
 
-  const markAllRead = async () => {
-    try {
-      await fetch(`${NOTIFICATION_API}/mark-all-read`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
-    } catch (err) {
-      console.error("markAllRead failed", err);
-    }
-  };
+    return notification;
+  },
 
-  const deleteNotif = async (id) => {
-    try {
-      await fetch(`${NOTIFICATION_API}/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setNotifications((prev) => prev.filter((n) => n._id !== id && n.id !== id));
-      fetchUnreadCount();
-    } catch (err) {
-      console.error("deleteNotif failed", err);
-    }
-  };
+  broadcast: async ({ recipients, ...rest }) => {
+    const results = await Promise.allSettled(
+      recipients.map((r) =>
+        notificationService.send({
+          recipientId:    r.id,
+          recipientEmail: r.email || null,
+          recipientPhone: r.phone || null,
+          metadata:       { ...rest.metadata, recipientName: r.name },
+          ...rest,
+        })
+      )
+    );
+    const succeeded = results.filter((r) => r.status === "fulfilled").length;
+    const failed    = results.filter((r) => r.status === "rejected").length;
+    console.log(`[NotificationService] Broadcast: ${succeeded} sent, ${failed} failed`);
+    return { succeeded, failed, results };
+  },
 
-  const fetchMore = () => {
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchNotifications(nextPage);
-  };
-
-  const refresh = () => fetchNotifications(1);
-
-  return {
-    notifications,
-    unreadCount,
-    loading,
-    markRead,
-    markAllRead,
-    deleteNotif,
-    fetchMore,
-    hasMore,
-    connected: true,
-    refresh,
-  };
+  notifyLeaveSubmitted: (employee, manager, leaveData, io) =>
+    notificationService.send({ /* ... same as before ... */ }),
+  notifyLeaveApproved: (employee, approver, leaveData, io) =>
+    notificationService.send({ /* ... */ }),
+  notifyLeaveRejected: (employee, rejector, leaveData, io) =>
+    notificationService.send({ /* ... */ }),
+  notifyLeaveBalanceLow: (employee, balanceData, io) =>
+    notificationService.send({ /* ... */ }),
+  notifyAccountAction: (employee, admin, action, reason, io) =>
+    notificationService.send({ /* ... */ }),
 };
+
+export default notificationService;
