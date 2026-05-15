@@ -6,8 +6,8 @@ const transporter = nodemailer.createTransport({
   port:   parseInt(process.env.SMTP_PORT, 10) || 587,
   secure: process.env.SMTP_SECURE === "true",
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: process.env.SMTP_USER,        // Brevo login: ab674f001@smtp-brevo.com
+    pass: process.env.SMTP_PASS,        // Your SMTP key
   },
 });
 
@@ -172,8 +172,11 @@ const sendEmail = async ({ to, type, data }) => {
 
   const { subject, html } = templateFn(data);
 
+  // 🔁 FIXED: use FROM_EMAIL (verified sender) instead of SMTP_USER (login)
+  const from = `"${process.env.APP_NAME || "Quantura LMS"}" <${process.env.FROM_EMAIL}>`;
+
   const info = await transporter.sendMail({
-    from: `"${process.env.APP_NAME || "Quantura LMS"}" <${process.env.SMTP_USER}>`,
+    from,
     to,
     subject,
     html,
@@ -193,5 +196,4 @@ const verifyConnection = async () => {
   }
 };
 
-// Default export to match: import emailService from "./emailService.js"
 export default { sendEmail, verifyConnection };
