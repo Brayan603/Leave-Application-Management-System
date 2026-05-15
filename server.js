@@ -88,6 +88,25 @@ const startServer = async () => {
   try {
     await connectDB();
 
+      // ========== TEST EMAIL (temporary – remove after testing) ==========
+    console.log("🔍 Testing email configuration...");
+     import("./services/emailService.js")
+      .then((module) => module.default || module)
+      .then((emailService) => {
+        emailService.sendEmail({
+          to: "b.malova60@gmail.com",      // send to yourself
+          type: "broadcast",
+          data: {
+            title: "Server Startup Test",
+            message: "If you receive this, Brevo is configured correctly!",
+            recipientName: "Test User",
+          },
+        })
+          .then(() => console.log("✅ Startup test email sent successfully"))
+          .catch((err) => console.error("❌ Startup test email failed:", err.message));
+      })
+      .catch((err) => console.error("❌ Could not import emailService:", err));
+
     // Create HTTP server (required for Socket.IO)
     const httpServer = http.createServer(app);
 
