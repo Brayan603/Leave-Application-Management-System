@@ -1,4 +1,3 @@
-// backend/server.js
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -88,24 +87,33 @@ const startServer = async () => {
   try {
     await connectDB();
 
-      // ========== TEST EMAIL (temporary – remove after testing) ==========
+    // ========== IMPROVED EMAIL TEST (SYNCHRONOUS, WITH VERIFICATION) ==========
     console.log("🔍 Testing email configuration...");
-     import("./services/emailService.js")
-      .then((module) => module.default || module)
-      .then((emailService) => {
-        emailService.sendEmail({
-          to: "b.malova60@gmail.com",      // send to yourself
-          type: "broadcast",
-          data: {
-            title: "Server Startup Test",
-            message: "If you receive this, Brevo is configured correctly!",
-            recipientName: "Test User",
-          },
-        })
-          .then(() => console.log("✅ Startup test email sent successfully"))
-          .catch((err) => console.error("❌ Startup test email failed:", err.message));
-      })
-      .catch((err) => console.error("❌ Could not import emailService:", err));
+    try {
+      // Dynamic import of emailService (ESM)
+      const emailService = await import("./services/emailService.js").then(m => m.default || m);
+      
+      // Verify SMTP connection first (if method exists)
+      if (typeof emailService.verifyConnection === 'function') {
+        await emailService.verifyConnection();
+        console.log("[Email] SMTP connection verified");
+      }
+      
+      // Send test email
+      await emailService.sendEmail({
+        to: "b.malova60@gmail.com",
+        type: "broadcast",
+        data: {
+          title: "Server Startup Test",
+          message: "If you receive this, Brevo is configured correctly!",
+          recipientName: "Test User",
+        },
+      });
+      console.log("✅ Startup test email sent successfully");
+    } catch (err) {
+      console.error("❌ Startup test email failed:", err.message);
+      console.error("Full error details:", err);
+    }
 
     // Create HTTP server (required for Socket.IO)
     const httpServer = http.createServer(app);
