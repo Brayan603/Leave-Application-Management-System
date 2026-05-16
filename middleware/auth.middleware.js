@@ -144,6 +144,22 @@ export const requireManager = (req, res, next) => {
   }
 };
 
+
+// Simple TTL cache (clears after 10 seconds)
+const userCache = new Map();
+
+const getCachedUser = async (userId) => {
+  const now = Date.now();
+  const cached = userCache.get(userId);
+  if (cached && (now - cached.timestamp) < 10000) {
+    return cached.user;
+  }
+  const user = await User.findById(userId);
+  if (user) {
+    userCache.set(userId, { user, timestamp: now });
+  }
+  return user;
+};
     
 
 
