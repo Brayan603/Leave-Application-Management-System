@@ -8,7 +8,7 @@ let ioInstance = null;
 export const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || "https://leave-management20-systems.vercel.app/",
+      origin: process.env.CLIENT_URL || "https://leave-management20-systems.vercel.app",
       methods: ["GET", "POST"],
       credentials: true,
     },
