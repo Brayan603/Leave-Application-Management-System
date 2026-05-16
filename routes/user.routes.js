@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import User from "../models/User.js";
 import Leave from "../models/LeaveType.js";
 import { protectAdmin, protect } from "../middleware/auth.middleware.js";
@@ -19,18 +20,42 @@ import {
 
 const router = express.Router();
 
+// ========== Helper: Generate ETag from a timestamp ==========
+const generateEtag = (timestamp) => {
+  if (!timestamp) return null;
+  return crypto.createHash("md5").update(timestamp.toISOString()).digest("hex");
+};
+
 // ========== Existing Routes ==========
 router.post("/", protectAdmin, createUser);
 router.put("/:id", protectAdmin, updateUser);
 
+// GET /api/users/ (list all users) – with conditional request support
 router.get("/", protectAdmin, async (req, res) => {
   try {
+    // 1. Get the timestamp of the most recently updated user (lightweight)
+    const latestUser = await User.findOne({}, { updatedAt: 1 })
+      .sort({ updatedAt: -1 })
+      .lean();
+    const lastModified = latestUser ? latestUser.updatedAt : new Date(0);
+    const etag = generateEtag(lastModified);
+
+    // 2. Conditional check – if client has the same ETag, return 304
+    if (req.headers["if-none-match"] === etag) {
+      return res.status(304).end();
+    }
+
+    // 3. Full query (only runs when data has changed)
     const users = await User.find()
       .select("-password")
       .populate("organization", "name")
       .populate("department", "name")
       .populate("manager", "firstName lastName email")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", "private, max-age=5");
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -39,26 +64,45 @@ router.get("/", protectAdmin, async (req, res) => {
 
 router.get("/managers/list", protectAdmin, async (req, res) => {
   try {
-    const managers = await User.find({ role: "manager" }).select("_id firstName lastName email");
+    const managers = await User.find({ role: "manager" })
+      .select("_id firstName lastName email")
+      .lean();
     res.json(managers);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ========== NEW: User Search (for messenger) ==========
+// ========== User Search (for messenger) ==========
 router.get("/search", protectAdmin, async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q || q.trim().length < 2) return res.json({ users: [] });
 
+    // ─── Special case: empty query ─────────────────────────
+    if (!q || q.trim().length < 2) {
+      // Return an empty array, but with a fast 304 if nothing changed
+      const latestUser = await User.findOne({}, { updatedAt: 1 })
+        .sort({ updatedAt: -1 })
+        .lean();
+      const lastModified = latestUser ? latestUser.updatedAt : new Date(0);
+      const etag = generateEtag(lastModified);
+
+      if (req.headers["if-none-match"] === etag) {
+        return res.status(304).end();
+      }
+
+      res.setHeader("ETag", etag);
+      res.setHeader("Cache-Control", "private, max-age=5");
+      return res.json({ users: [] });
+    }
+
+    // ─── Non‑empty query – perform actual search (no ETag caching) ───
     const regex = new RegExp(q.trim(), "i");
     const users = await User.find({
       $or: [
         { firstName: regex },
         { lastName: regex },
         { email: regex },
-        // combine first+last name search
         {
           $expr: {
             $regexMatch: {
@@ -110,8 +154,7 @@ router.get("/employee/:id", protect, async (req, res) => {
   // ... your existing employee detail code (keep as is)
 });
 
-// ========== New Maintenance Routes ==========
-// Note: order matters – place `/logout-all` before `/:userId` routes
+// ========== Maintenance Routes ==========
 router.post("/logout-all", protectAdmin, logoutAllUsers);
 
 router.get("/:userId", protectAdmin, getUserDetails);
