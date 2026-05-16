@@ -22,7 +22,8 @@
     "morgan": "^1.10.1",
     "date-fns": "^3.6.0",
     "multer": "^2.1.1",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.7.5",
+    "sib-api-v3-sdk": "^8.5.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
