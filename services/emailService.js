@@ -1,14 +1,21 @@
-// backend/services/emailService.js
 import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
-  host:   process.env.SMTP_HOST || "smtp.gmail.com",
-  port:   parseInt(process.env.SMTP_PORT, 10) || 587,
-  secure: process.env.SMTP_SECURE === "true",
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.SMTP_PORT, 10) || 587,
+  secure: process.env.SMTP_SECURE === "true", // false for port 587
   auth: {
-    user: process.env.SMTP_USER,        // Brevo login: ab674f001@smtp-brevo.com
-    pass: process.env.SMTP_PASS,        // Your SMTP key
+    user: process.env.SMTP_USER,   // Brevo login: ab674f001@smtp-brevo.com
+    pass: process.env.SMTP_PASS,   // Your SMTP key
   },
+  // ⏱️ Increased timeouts to prevent "Connection timeout"
+  connectionTimeout: 15000,  // 15 seconds to establish connection
+  greetingTimeout: 15000,    // 15 seconds to receive greeting
+  socketTimeout: 20000,      // 20 seconds for socket activity
+  // Optional: keep connection alive
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100,
 });
 
 /* ── Shared HTML wrapper ── */
@@ -172,7 +179,6 @@ const sendEmail = async ({ to, type, data }) => {
 
   const { subject, html } = templateFn(data);
 
-  // 🔁 FIXED: use FROM_EMAIL (verified sender) instead of SMTP_USER (login)
   const from = `"${process.env.APP_NAME || "Quantura LMS"}" <${process.env.FROM_EMAIL}>`;
 
   const info = await transporter.sendMail({
@@ -191,8 +197,10 @@ const verifyConnection = async () => {
   try {
     await transporter.verify();
     console.log("[Email] SMTP connection verified ✓");
+    return true;
   } catch (err) {
-    console.warn("[Email] SMTP connection failed:", err.message);
+    console.error("[Email] SMTP connection failed:", err.message);
+    throw err;
   }
 };
 
