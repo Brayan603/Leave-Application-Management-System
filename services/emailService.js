@@ -1,24 +1,13 @@
-import nodemailer from "nodemailer";
+import SibApiV3Sdk from 'sib-api-v3-sdk';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.SMTP_PORT, 10) || 587,
-  secure: process.env.SMTP_SECURE === "true", // false for port 587
-  auth: {
-    user: process.env.SMTP_USER,   // Brevo login: ab674f001@smtp-brevo.com
-    pass: process.env.SMTP_PASS,   // Your SMTP key
-  },
-  // ⏱️ Increased timeouts to prevent "Connection timeout"
-  connectionTimeout: 15000,  // 15 seconds to establish connection
-  greetingTimeout: 15000,    // 15 seconds to receive greeting
-  socketTimeout: 20000,      // 20 seconds for socket activity
-  // Optional: keep connection alive
-  pool: true,
-  maxConnections: 5,
-  maxMessages: 100,
-});
+// Configure Brevo API client
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+const apiKey = defaultClient.authentications['api-key'];
+apiKey.apiKey = process.env.BREVO_API_KEY;
 
-/* ── Shared HTML wrapper ── */
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+
+/* ── Shared HTML wrapper (YOUR EXISTING WRAPPER) ── */
 const wrap = (title, body) => `
 <!DOCTYPE html>
 <html lang="en">
@@ -65,7 +54,7 @@ const wrap = (title, body) => `
 </body>
 </html>`;
 
-/* ── Templates ── */
+/* ── Templates (YOUR EXISTING TEMPLATES) ── */
 const templates = {
   leave_submitted: (d) => ({
     subject: `Leave Request Submitted – ${d.employeeName}`,
@@ -82,7 +71,6 @@ const templates = {
        <a class="btn" href="${process.env.APP_URL}/manager/pending-tasks">Review Request</a>`
     ),
   }),
-
   leave_approved: (d) => ({
     subject: `✅ Leave Approved – ${d.startDate} to ${d.endDate}`,
     html: wrap("Leave Approved",
@@ -97,7 +85,6 @@ const templates = {
        <p>Please ensure your handover is completed before your leave begins.</p>`
     ),
   }),
-
   leave_rejected: (d) => ({
     subject: `❌ Leave Request Rejected`,
     html: wrap("Leave Rejected",
@@ -112,7 +99,6 @@ const templates = {
        <p>If you have concerns, please contact your manager directly.</p>`
     ),
   }),
-
   leave_balance_low: (d) => ({
     subject: `⚠️ Low Leave Balance Alert`,
     html: wrap("Low Leave Balance",
@@ -125,7 +111,6 @@ const templates = {
        <p>Please plan your leave accordingly.</p>`
     ),
   }),
-
   account_action: (d) => ({
     subject: `🔔 Account Update – ${d.action}`,
     html: wrap("Account Action",
@@ -140,7 +125,6 @@ const templates = {
        <p>If you believe this is an error, contact your administrator.</p>`
     ),
   }),
-
   broadcast: (d) => ({
     subject: `📢 ${d.title}`,
     html: wrap(d.title,
@@ -149,7 +133,6 @@ const templates = {
        ${d.actionUrl ? `<a class="btn" href="${d.actionUrl}">${d.actionLabel || "View"}</a>` : ""}`
     ),
   }),
-
   announcement: (d) => ({
     subject: `📌 Announcement: ${d.title}`,
     html: wrap(d.title,
@@ -158,7 +141,6 @@ const templates = {
        ${d.actionUrl ? `<a class="btn" href="${d.actionUrl}">Read More</a>` : ""}`
     ),
   }),
-
   secure_message: (d) => ({
     subject: `🔒 Secure Message from ${d.senderName}`,
     html: wrap("Secure Message",
@@ -172,36 +154,34 @@ const templates = {
   }),
 };
 
-/* ── sendEmail ── */
+/* ── sendEmail using Brevo API ── */
 const sendEmail = async ({ to, type, data }) => {
   const templateFn = templates[type];
   if (!templateFn) throw new Error(`Unknown email template type: "${type}"`);
 
   const { subject, html } = templateFn(data);
 
-  const from = `"${process.env.APP_NAME || "Quantura LMS"}" <${process.env.FROM_EMAIL}>`;
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  sendSmtpEmail.to = [{ email: to }];
+  sendSmtpEmail.sender = {
+    email: process.env.FROM_EMAIL,
+    name: process.env.APP_NAME || "Quantura LMS",
+  };
+  sendSmtpEmail.subject = subject;
+  sendSmtpEmail.htmlContent = html;
 
-  const info = await transporter.sendMail({
-    from,
-    to,
-    subject,
-    html,
-  });
-
-  console.log(`[Email] Sent ${type} to ${to} — messageId: ${info.messageId}`);
-  return info;
+  const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
+  console.log(`[Email] Sent ${type} to ${to} — messageId: ${response.messageId}`);
+  return response;
 };
 
-/* ── verifyConnection ── */
+/* ── verifyConnection – checks API key exists ── */
 const verifyConnection = async () => {
-  try {
-    await transporter.verify();
-    console.log("[Email] SMTP connection verified ✓");
-    return true;
-  } catch (err) {
-    console.error("[Email] SMTP connection failed:", err.message);
-    throw err;
+  if (!process.env.BREVO_API_KEY) {
+    throw new Error("BREVO_API_KEY is not set in environment");
   }
+  console.log("[Email] Brevo API key is configured");
+  return true;
 };
 
 export default { sendEmail, verifyConnection };
