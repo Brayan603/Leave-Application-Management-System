@@ -150,7 +150,15 @@ export const updateLeaveStatus = async (req, res) => {
 // ============================
 export const getLeaveTypes = async (req, res) => {
   try {
-    const leaveTypes = await LeaveType.find();
+    const { organization } = req.query;
+    const filter = {};
+    if (organization) {
+      if (!mongoose.Types.ObjectId.isValid(organization)) {
+        return res.status(400).json({ message: "Invalid organization ID" });
+      }
+      filter.organization = organization;
+    }
+    const leaveTypes = await LeaveType.find(filter);
     return res.json(leaveTypes || []);
   } catch {
     return res.status(500).json({ message: "Server error" });
@@ -305,6 +313,7 @@ export const getAllLeavesForAdmin = async (req, res) => {
     const {
       startDate,
       endDate,
+      organization,
       department,
       subDepartment,
       employee,
@@ -314,7 +323,7 @@ export const getAllLeavesForAdmin = async (req, res) => {
 
     const filter = {};
 
-    // ---- Date filtering ----
+    // Date filtering (unchanged)
     if (startDate) {
       const d = new Date(startDate);
       if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid startDate" });
@@ -326,7 +335,8 @@ export const getAllLeavesForAdmin = async (req, res) => {
       filter.end = { ...filter.end, $lte: d };
     }
 
-    // ---- User filtering (employee > subDepartment > department) ----
+    // ---- User filtering ----
+    // Priority: employee > subDepartment > department > organization
     if (employee) {
       if (!mongoose.Types.ObjectId.isValid(employee))
         return res.status(400).json({ message: "Invalid employee ID" });
@@ -334,48 +344,40 @@ export const getAllLeavesForAdmin = async (req, res) => {
     } else if (subDepartment) {
       if (!mongoose.Types.ObjectId.isValid(subDepartment))
         return res.status(400).json({ message: "Invalid subDepartment ID" });
-      const users = await User.find({ subDepartment: new mongoose.Types.ObjectId(subDepartment) }).select("_id");
+      const users = await User.find({ subDepartment: subDepartment }).select("_id");
       const ids = users.map(u => u._id);
       if (ids.length) filter.user = { $in: ids };
       else return res.json([]);
     } else if (department) {
       if (!mongoose.Types.ObjectId.isValid(department))
         return res.status(400).json({ message: "Invalid department ID" });
-      const deptId = new mongoose.Types.ObjectId(department);
-
-      // optional: include sub‑departments if model exists
-      let subDeptIds = [];
-      try {
-        const SubDepartment = (await import("../models/SubDepartment.js")).default;
-        const subs = await SubDepartment.find({ department: deptId }).select("_id");
-        subDeptIds = subs.map(s => s._id);
-      } catch (err) {
-        // SubDepartment model not available – proceed with department only
-      }
-
-      const conditions = [{ department: deptId }];
-      if (subDeptIds.length) conditions.push({ subDepartment: { $in: subDeptIds } });
-
-      const users = await User.find({ $or: conditions }).select("_id");
+      const users = await User.find({ department: department }).select("_id");
+      const ids = users.map(u => u._id);
+      if (ids.length) filter.user = { $in: ids };
+      else return res.json([]);
+    } else if (organization) {
+      if (!mongoose.Types.ObjectId.isValid(organization))
+        return res.status(400).json({ message: "Invalid organization ID" });
+      const users = await User.find({ organization: organization }).select("_id");
       const ids = users.map(u => u._id);
       if (ids.length) filter.user = { $in: ids };
       else return res.json([]);
     }
 
-    // ---- Leave type filter ----
+    // Leave type filter
     if (leaveType) {
       if (!mongoose.Types.ObjectId.isValid(leaveType))
         return res.status(400).json({ message: "Invalid leaveType ID" });
       filter.leaveType = new mongoose.Types.ObjectId(leaveType);
     }
 
-    // ---- Status filter ----
+    // Status filter
     if (status) {
       filter.status = status;
     }
 
     const leaves = await Leave.find(filter)
-      .populate("user", "firstName lastName email department subDepartment")
+      .populate("user", "firstName lastName email department subDepartment organization")
       .populate("leaveType", "name")
       .populate("approvedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
