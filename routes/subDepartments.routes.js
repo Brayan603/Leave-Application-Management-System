@@ -1,9 +1,9 @@
-// routes/subDepartment.routes.js
 import express from "express";
 import {
   createSubDepartment,
   getSubDepartments,
-  getSubDepartmentsByDepartment,
+  getSubDepartmentsByDepartment, // renamed controller? keep as is but route changed
+  getSubDepartmentById,
   updateSubDepartment,
   deleteSubDepartment
 } from "../controllers/subDepartment.controller.js";
@@ -16,8 +16,14 @@ router.post("/", createSubDepartment);
 // Get all subdepartments
 router.get("/", getSubDepartments);
 
-// Get subdepartments by department ID
+// ✅ NEW ROUTE: get subdepartments by department ID (matches frontend URL)
+router.get("/department/:departmentId", getSubDepartmentsByDepartment);
+
+// Keep the old route for backward compatibility (optional)
 router.get("/by-department/:departmentId", getSubDepartmentsByDepartment);
+
+// Get a single subdepartment by ID
+router.get("/:id", getSubDepartmentById);
 
 // Update a subdepartment by ID
 router.put("/:id", updateSubDepartment);
