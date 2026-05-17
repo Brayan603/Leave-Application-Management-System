@@ -1,3 +1,4 @@
+import mongoose from "mongoose"; // ✅ Add this import for ObjectId validation
 import Department from "../models/Department.js";
 import Organization from "../models/Organization.js";
 
@@ -56,25 +57,28 @@ export const createDepartment = async (req, res) => {
   }
 };
 
-// ===================== GET ALL =====================
 // ===================== GET ALL (with optional organization filter) =====================
 export const getDepartments = async (req, res) => {
   try {
     const { organization } = req.query;
     const filter = {};
+    
     if (organization) {
+      // ✅ Validate ObjectId before using it
       if (!mongoose.Types.ObjectId.isValid(organization)) {
-        return res.status(400).json({ message: "Invalid organization ID" });
+        return res.status(400).json({ message: "Invalid organization ID format." });
       }
       filter.organization = organization;
     }
+    
     const departments = await Department.find(filter)
       .populate("organization", "name code")
       .sort({ createdAt: -1 });
 
     res.json(departments);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error fetching departments:", error);
+    res.status(500).json({ message: "Internal server error fetching departments." });
   }
 };
 
@@ -82,6 +86,11 @@ export const getDepartments = async (req, res) => {
 export const getDepartmentsByOrganization = async (req, res) => {
   try {
     const { organizationId } = req.params;
+
+    // ✅ Also validate the parameter here
+    if (!mongoose.Types.ObjectId.isValid(organizationId)) {
+      return res.status(400).json({ message: "Invalid organization ID format." });
+    }
 
     const departments = await Department.find({
       organization: organizationId,
@@ -91,6 +100,7 @@ export const getDepartmentsByOrganization = async (req, res) => {
 
     res.json(departments);
   } catch (error) {
+    console.error("Error fetching departments by organization:", error);
     res.status(500).json({
       message: error.message,
     });
@@ -133,7 +143,7 @@ export const updateDepartment = async (req, res) => {
       }
     }
 
-    // 🔥 FIXED DUPLICATE CHECK (IMPORTANT)
+    // 🔥 FIXED DUPLICATE CHECK
     if (cleanName && organization) {
       const existing = await Department.findOne({
         organization,
