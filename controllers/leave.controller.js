@@ -377,10 +377,10 @@ export const getAllLeavesForAdmin = async (req, res) => {
     }
 
     const leaves = await Leave.find(filter)
-      .populate("user", "firstName lastName email department subDepartment organization")
-      .populate("leaveType", "name")
-      .populate("approvedBy", "firstName lastName email")
-      .sort({ createdAt: -1 });
+  .populate("user", "firstName lastName email department subDepartment organization")   // ← added "organization"
+  .populate("leaveType", "name")
+  .populate("approvedBy", "firstName lastName email")
+  .sort({ createdAt: -1 });
 
     res.json(leaves);
   } catch (error) {
