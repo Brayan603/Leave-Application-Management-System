@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import SubDepartment from "../models/subDepartment.js";
 import Department from "../models/Department.js";
 import Organization from "../models/Organization.js";
@@ -11,6 +12,14 @@ export const createSubDepartment = async (req, res) => {
       return res.status(400).json({
         message: "Name, department and organization are required."
       });
+    }
+
+    // Validate ObjectIds
+    if (!mongoose.Types.ObjectId.isValid(department)) {
+      return res.status(400).json({ message: "Invalid department ID format." });
+    }
+    if (!mongoose.Types.ObjectId.isValid(organization)) {
+      return res.status(400).json({ message: "Invalid organization ID format." });
     }
 
     const deptExists = await Department.findById(department);
@@ -38,11 +47,11 @@ export const createSubDepartment = async (req, res) => {
     const subdepartment = new SubDepartment({
       name: name.trim(),
       department,
-      organization
+      organization,
+      createdBy: req.user?.id
     });
 
     const saved = await subdepartment.save();
-
     const populated = await saved.populate([
       { path: "department", select: "name" },
       { path: "organization", select: "name" }
@@ -54,6 +63,7 @@ export const createSubDepartment = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Create subdepartment error:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -68,14 +78,20 @@ export const getSubDepartments = async (req, res) => {
 
     res.json(data);
   } catch (error) {
+    console.error("Get subdepartments error:", error);
     res.status(500).json({ message: error.message });
   }
 };
 
-// ===================== GET BY DEPARTMENT =====================
+// ===================== GET BY DEPARTMENT (used by both routes) =====================
 export const getSubDepartmentsByDepartment = async (req, res) => {
   try {
     const { departmentId } = req.params;
+
+    // ✅ Validate departmentId format
+    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+      return res.status(400).json({ message: "Invalid department ID format." });
+    }
 
     const data = await SubDepartment.find({ department: departmentId })
       .populate("department", "name")
@@ -83,6 +99,7 @@ export const getSubDepartmentsByDepartment = async (req, res) => {
 
     res.json(data);
   } catch (error) {
+    console.error("Get subdepartments by department error:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -90,7 +107,12 @@ export const getSubDepartmentsByDepartment = async (req, res) => {
 // ===================== GET BY ID =====================
 export const getSubDepartmentById = async (req, res) => {
   try {
-    const data = await SubDepartment.findById(req.params.id)
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid subdepartment ID format." });
+    }
+
+    const data = await SubDepartment.findById(id)
       .populate("department", "name")
       .populate("organization", "name");
 
@@ -100,6 +122,7 @@ export const getSubDepartmentById = async (req, res) => {
 
     res.json(data);
   } catch (error) {
+    console.error("Get subdepartment by ID error:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -107,7 +130,19 @@ export const getSubDepartmentById = async (req, res) => {
 // ===================== UPDATE =====================
 export const updateSubDepartment = async (req, res) => {
   try {
+    const { id } = req.params;
     const { name, department, organization } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid subdepartment ID format." });
+    }
+
+    if (department && !mongoose.Types.ObjectId.isValid(department)) {
+      return res.status(400).json({ message: "Invalid department ID format." });
+    }
+    if (organization && !mongoose.Types.ObjectId.isValid(organization)) {
+      return res.status(400).json({ message: "Invalid organization ID format." });
+    }
 
     if (department) {
       const deptExists = await Department.findById(department);
@@ -129,7 +164,7 @@ export const updateSubDepartment = async (req, res) => {
     if (organization) updateData.organization = organization;
 
     const updated = await SubDepartment.findByIdAndUpdate(
-      req.params.id,
+      id,
       updateData,
       { new: true, runValidators: true }
     )
@@ -146,14 +181,20 @@ export const updateSubDepartment = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Update subdepartment error:", error);
     res.status(500).json({ message: error.message });
   }
 };
 
-// ===================== DELETE (FIXED EXPORT) =====================
+// ===================== DELETE =====================
 export const deleteSubDepartment = async (req, res) => {
   try {
-    const deleted = await SubDepartment.findByIdAndDelete(req.params.id);
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid subdepartment ID format." });
+    }
+
+    const deleted = await SubDepartment.findByIdAndDelete(id);
 
     if (!deleted) {
       return res.status(404).json({ message: "SubDepartment not found." });
@@ -164,6 +205,7 @@ export const deleteSubDepartment = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Delete subdepartment error:", error);
     res.status(500).json({ message: error.message });
   }
 };
