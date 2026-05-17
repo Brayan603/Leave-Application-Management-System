@@ -57,17 +57,24 @@ export const createDepartment = async (req, res) => {
 };
 
 // ===================== GET ALL =====================
+// ===================== GET ALL (with optional organization filter) =====================
 export const getDepartments = async (req, res) => {
   try {
-    const departments = await Department.find()
+    const { organization } = req.query;
+    const filter = {};
+    if (organization) {
+      if (!mongoose.Types.ObjectId.isValid(organization)) {
+        return res.status(400).json({ message: "Invalid organization ID" });
+      }
+      filter.organization = organization;
+    }
+    const departments = await Department.find(filter)
       .populate("organization", "name code")
       .sort({ createdAt: -1 });
 
     res.json(departments);
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
 
