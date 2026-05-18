@@ -47,7 +47,7 @@ export const applyLeave = async (req, res) => {
       return res.status(400).json({ message: "Not entitled to this leave type" });
     }
 
-    // --- Recalculate totalDays for accrual leave on the fly ---
+    // Recalculate totalDays for accrual leave on the fly
     let currentTotalDays = entitlement.totalDays;
     if (entitlement.type === "accrual") {
       const today = new Date();
@@ -215,7 +215,7 @@ export const getUserLeaveTypes = async (req, res) => {
     const updated = data.map((ent) => {
       const doc = ent.toObject();
 
-      let totalDays = doc.totalDays || 0;
+      let totalDays = doc.totalDays; // might be 0, null, or number
       const maxDays = doc.maxDays || 0;
       const usedDays = doc.usedDays || 0;
 
@@ -225,8 +225,12 @@ export const getUserLeaveTypes = async (req, res) => {
         const accrued = monthsWorked * (doc.accrualRate || 0);
         totalDays = Math.min(accrued, maxDays);
       } else {
-        // Fixed leave: if totalDays is 0 (not set) but maxDays exists, use maxDays
-        if (totalDays <= 0 && maxDays > 0) {
+        // Fixed leave: if totalDays is undefined/null or < 0, fallback to maxDays
+        if (totalDays == null || totalDays < 0) {
+          totalDays = maxDays;
+        }
+        // If totalDays is 0 but maxDays > 0, we trust maxDays (should not happen after creation fix)
+        if (totalDays === 0 && maxDays > 0) {
           totalDays = maxDays;
         }
       }
@@ -235,7 +239,7 @@ export const getUserLeaveTypes = async (req, res) => {
         _id: doc._id,
         leaveType: doc.leaveType,
         type: doc.type,
-        totalDays,
+        totalDays,      // now always a number
         usedDays,
         maxDays,
         accrualRate: doc.accrualRate,
