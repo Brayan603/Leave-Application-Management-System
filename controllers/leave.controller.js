@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Leave from "../models/LeaveRequest.js";   // ← ensure this exports a Mongoose model
+import Leave from "../models/LeaveRequest.js";
 import Entitlement from "../models/Entitlement.js";
 import LeaveType from "../models/LeaveType.js";
 import User from "../models/User.js";
@@ -306,6 +306,89 @@ export const getManagerLeaves = async (req, res) => {
 };
 
 // ============================
+// 🛡️ GET ALL LEAVES (ADMIN ONLY) – full populated list with filters
+// ============================
+export const getAllLeavesForAdmin = async (req, res) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      organization,
+      department,
+      subDepartment,
+      employee,
+      leaveType,
+      status,
+    } = req.query;
+
+    const filter = {};
+
+    // Date filtering
+    if (startDate) {
+      const d = new Date(startDate);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid startDate" });
+      filter.start = { ...filter.start, $gte: d };
+    }
+    if (endDate) {
+      const d = new Date(endDate);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid endDate" });
+      filter.end = { ...filter.end, $lte: d };
+    }
+
+    // User filtering (priority: employee > subDepartment > department > organization)
+    if (employee) {
+      if (!mongoose.Types.ObjectId.isValid(employee))
+        return res.status(400).json({ message: "Invalid employee ID" });
+      filter.user = new mongoose.Types.ObjectId(employee);
+    } else if (subDepartment) {
+      if (!mongoose.Types.ObjectId.isValid(subDepartment))
+        return res.status(400).json({ message: "Invalid subDepartment ID" });
+      const users = await User.find({ subDepartment: subDepartment }).select("_id");
+      const ids = users.map(u => u._id);
+      if (ids.length) filter.user = { $in: ids };
+      else return res.json([]);
+    } else if (department) {
+      if (!mongoose.Types.ObjectId.isValid(department))
+        return res.status(400).json({ message: "Invalid department ID" });
+      const users = await User.find({ department: department }).select("_id");
+      const ids = users.map(u => u._id);
+      if (ids.length) filter.user = { $in: ids };
+      else return res.json([]);
+    } else if (organization) {
+      if (!mongoose.Types.ObjectId.isValid(organization))
+        return res.status(400).json({ message: "Invalid organization ID" });
+      const users = await User.find({ organization: organization }).select("_id");
+      const ids = users.map(u => u._id);
+      if (ids.length) filter.user = { $in: ids };
+      else return res.json([]);
+    }
+
+    // Leave type filter
+    if (leaveType) {
+      if (!mongoose.Types.ObjectId.isValid(leaveType))
+        return res.status(400).json({ message: "Invalid leaveType ID" });
+      filter.leaveType = new mongoose.Types.ObjectId(leaveType);
+    }
+
+    // Status filter
+    if (status) {
+      filter.status = status;
+    }
+
+    const leaves = await Leave.find(filter)
+      .populate("user", "firstName lastName email department subDepartment organization")
+      .populate("leaveType", "name")
+      .populate("approvedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    res.json(leaves);
+  } catch (error) {
+    console.error("ADMIN LEAVES ERROR:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// ============================
 // 🚀 GET ALL LEAVES SUMMARY (ADMIN ONLY) – aggregation‑optimised
 // ============================
 export const getAllLeavesSummary = async (req, res) => {
@@ -348,7 +431,7 @@ export const getAllLeavesSummary = async (req, res) => {
       match.status = status;
     }
 
-    // --- User‑based filters: fetch matching user IDs first (same logic as getAllLeavesForAdmin) ---
+    // --- User‑based filters ---
     let userIds = null;
     if (employee) {
       if (!mongoose.Types.ObjectId.isValid(employee))
@@ -373,7 +456,6 @@ export const getAllLeavesSummary = async (req, res) => {
 
     if (userIds !== null) {
       if (userIds.length === 0) {
-        // No users match → return empty summary immediately
         return res.json({
           total: 0,
           approved: 0,
@@ -388,7 +470,7 @@ export const getAllLeavesSummary = async (req, res) => {
       match.user = { $in: userIds };
     }
 
-    // ---------- Aggregation pipeline – single $group ----------
+    // ---------- Aggregation pipeline ----------
     const pipeline = [
       { $match: match },
       {
@@ -414,7 +496,6 @@ export const getAllLeavesSummary = async (req, res) => {
 
     const result = await Leave.aggregate(pipeline);
 
-    // No documents matched
     if (result.length === 0) {
       return res.json({
         total: 0,
@@ -430,7 +511,7 @@ export const getAllLeavesSummary = async (req, res) => {
 
     const agg = result[0];
 
-    // ---------- Expiring employees count (approved/pending ending in next 7 days) ----------
+    // ---------- Expiring employees count ----------
     const today = new Date();
     const future = new Date();
     future.setDate(today.getDate() + 7);
@@ -443,7 +524,6 @@ export const getAllLeavesSummary = async (req, res) => {
 
     const expiringCount = expiringLeaves.length;
 
-    // ---------- Chart data ----------
     const chartData = [
       { name: "Approved",  value: agg.approved  },
       { name: "Pending",   value: agg.pending   },
