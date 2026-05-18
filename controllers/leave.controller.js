@@ -3,6 +3,7 @@ import Leave from "../models/LeaveRequest.js";
 import Entitlement from "../models/Entitlement.js";
 import LeaveType from "../models/LeaveType.js";
 import User from "../models/User.js";
+import { differenceInMonths } from "date-fns";
 
 // ============================
 // 🔐 SAFE USER ID HELPER
@@ -181,16 +182,30 @@ export const getMyLeaves = async (req, res) => {
 };
 
 // ============================
-// 📌 GET USER LEAVE TYPES (Entitlements)
+// 📌 GET USER LEAVE TYPES (Entitlements) – with accrual calc
 // ============================
 export const getUserLeaveTypes = async (req, res) => {
   try {
     const userId = getUserId(req);
-    const data = await Entitlement.find({ user: userId }).populate("leaveType", "name totalDays");
-    return res.json(data || []);
+    const data = await Entitlement.find({ user: userId }).populate("leaveType", "name");
+
+    // Recalculate accrual leave totals on the fly
+    const updated = data.map((ent) => {
+      const doc = ent.toObject();
+      if (doc.type === "accrual") {
+        const today = new Date();
+        const start = doc.startDate || doc.createdAt || today;
+        const monthsWorked = differenceInMonths(today, start);
+        const accrued = monthsWorked * (doc.accrualRate || 0);
+        doc.totalDays = Math.min(accrued, doc.maxDays);
+      }
+      return doc;
+    });
+
+    res.json(updated);
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
+    console.error("getUserLeaveTypes error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
