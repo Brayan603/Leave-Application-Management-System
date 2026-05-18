@@ -21,7 +21,7 @@ const isSameId = (a, b) => {
 };
 
 // ============================
-// ✅ APPLY LEAVE
+// ✅ APPLY LEAVE – now handles accrual correctly
 // ============================
 export const applyLeave = async (req, res) => {
   try {
@@ -47,7 +47,17 @@ export const applyLeave = async (req, res) => {
       return res.status(400).json({ message: "Not entitled to this leave type" });
     }
 
-    const remaining = entitlement.totalDays - entitlement.usedDays;
+    // --- Recalculate totalDays for accrual leave on the fly ---
+    let currentTotalDays = entitlement.totalDays;
+    if (entitlement.type === "accrual") {
+      const today = new Date();
+      const start = entitlement.startDate || entitlement.createdAt || today;
+      const monthsWorked = differenceInMonths(today, start);
+      const accrued = monthsWorked * (entitlement.accrualRate || 0);
+      currentTotalDays = Math.min(accrued, entitlement.maxDays);
+    }
+
+    const remaining = currentTotalDays - entitlement.usedDays;
     if (Number(days) > remaining) {
       return res.status(400).json({
         message: `Insufficient balance. Remaining: ${remaining}`,
@@ -129,7 +139,17 @@ export const updateLeaveStatus = async (req, res) => {
       const entitlement = await Entitlement.findOne({ user: leave.user._id, leaveType: leave.leaveType });
       if (!entitlement) return res.status(400).json({ message: "Entitlement not found" });
 
-      const remaining = entitlement.totalDays - entitlement.usedDays;
+      // Recalculate totalDays for accrual
+      let currentTotal = entitlement.totalDays;
+      if (entitlement.type === "accrual") {
+        const today = new Date();
+        const start = entitlement.startDate || entitlement.createdAt || today;
+        const monthsWorked = differenceInMonths(today, start);
+        const accrued = monthsWorked * (entitlement.accrualRate || 0);
+        currentTotal = Math.min(accrued, entitlement.maxDays);
+      }
+
+      const remaining = currentTotal - entitlement.usedDays;
       if (leave.days > remaining) {
         return res.status(400).json({ message: `Not enough balance. Remaining: ${remaining}` });
       }
@@ -182,11 +202,7 @@ export const getMyLeaves = async (req, res) => {
 };
 
 // ============================
-// 📌 GET USER LEAVE TYPES (Entitlements) – with accrual calc
-// ============================
-
-// ============================
-// 📌 GET USER LEAVE TYPES (Entitlements) – correct total & used days
+// 📌 GET USER LEAVE TYPES (Entitlements) – CORRECTED
 // ============================
 export const getUserLeaveTypes = async (req, res) => {
   try {
@@ -199,19 +215,18 @@ export const getUserLeaveTypes = async (req, res) => {
     const updated = data.map((ent) => {
       const doc = ent.toObject();
 
-      let totalDays = doc.totalDays || 0;   // current stored value
+      let totalDays = doc.totalDays || 0;
       const maxDays = doc.maxDays || 0;
       const usedDays = doc.usedDays || 0;
 
       if (doc.type === "accrual") {
-        // Accrual: calculate earned days based on months worked
         const start = doc.startDate || doc.createdAt || today;
         const monthsWorked = differenceInMonths(today, start);
         const accrued = monthsWorked * (doc.accrualRate || 0);
         totalDays = Math.min(accrued, maxDays);
       } else {
-        // Fixed leave: if totalDays is 0 but maxDays is set, use maxDays
-        if (totalDays === 0 && maxDays > 0) {
+        // Fixed leave: if totalDays is 0 (not set) but maxDays exists, use maxDays
+        if (totalDays <= 0 && maxDays > 0) {
           totalDays = maxDays;
         }
       }
@@ -220,7 +235,7 @@ export const getUserLeaveTypes = async (req, res) => {
         _id: doc._id,
         leaveType: doc.leaveType,
         type: doc.type,
-        totalDays,      // now always correct
+        totalDays,
         usedDays,
         maxDays,
         accrualRate: doc.accrualRate,
@@ -234,7 +249,6 @@ export const getUserLeaveTypes = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
- 
 
 // ============================
 // 📌 GET USER LEAVE HISTORY (own)
@@ -365,7 +379,6 @@ export const getAllLeavesForAdmin = async (req, res) => {
 
     const filter = {};
 
-    // Date filtering
     if (startDate) {
       const d = new Date(startDate);
       if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid startDate" });
@@ -377,7 +390,6 @@ export const getAllLeavesForAdmin = async (req, res) => {
       filter.end = { ...filter.end, $lte: d };
     }
 
-    // User filtering (priority: employee > subDepartment > department > organization)
     if (employee) {
       if (!mongoose.Types.ObjectId.isValid(employee))
         return res.status(400).json({ message: "Invalid employee ID" });
@@ -405,14 +417,12 @@ export const getAllLeavesForAdmin = async (req, res) => {
       else return res.json([]);
     }
 
-    // Leave type filter
     if (leaveType) {
       if (!mongoose.Types.ObjectId.isValid(leaveType))
         return res.status(400).json({ message: "Invalid leaveType ID" });
       filter.leaveType = new mongoose.Types.ObjectId(leaveType);
     }
 
-    // Status filter
     if (status) {
       filter.status = status;
     }
@@ -446,10 +456,8 @@ export const getAllLeavesSummary = async (req, res) => {
       status,
     } = req.query;
 
-    // ---------- Build match stage ----------
     const match = {};
 
-    // Date filters
     if (startDate) {
       const d = new Date(startDate);
       if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid startDate" });
@@ -461,19 +469,16 @@ export const getAllLeavesSummary = async (req, res) => {
       match.end = { $lte: d };
     }
 
-    // Leave type filter
     if (leaveType) {
       if (!mongoose.Types.ObjectId.isValid(leaveType))
         return res.status(400).json({ message: "Invalid leaveType ID" });
       match.leaveType = new mongoose.Types.ObjectId(leaveType);
     }
 
-    // Status filter
     if (status) {
       match.status = status;
     }
 
-    // --- User‑based filters ---
     let userIds = null;
     if (employee) {
       if (!mongoose.Types.ObjectId.isValid(employee))
@@ -512,7 +517,6 @@ export const getAllLeavesSummary = async (req, res) => {
       match.user = { $in: userIds };
     }
 
-    // ---------- Aggregation pipeline ----------
     const pipeline = [
       { $match: match },
       {
@@ -520,18 +524,10 @@ export const getAllLeavesSummary = async (req, res) => {
           _id: null,
           total: { $sum: 1 },
           totalDays: { $sum: "$days" },
-          approved: {
-            $sum: { $cond: [{ $eq: ["$status", "Approved"] }, 1, 0] }
-          },
-          pending: {
-            $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] }
-          },
-          rejected: {
-            $sum: { $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0] }
-          },
-          cancelled: {
-            $sum: { $cond: [{ $eq: ["$status", "Cancelled"] }, 1, 0] }
-          }
+          approved:  { $sum: { $cond: [{ $eq: ["$status", "Approved"] }, 1, 0] } },
+          pending:   { $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] } },
+          rejected:  { $sum: { $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0] } },
+          cancelled: { $sum: { $cond: [{ $eq: ["$status", "Cancelled"] }, 1, 0] } }
         }
       }
     ];
@@ -553,7 +549,6 @@ export const getAllLeavesSummary = async (req, res) => {
 
     const agg = result[0];
 
-    // ---------- Expiring employees count ----------
     const today = new Date();
     const future = new Date();
     future.setDate(today.getDate() + 7);
