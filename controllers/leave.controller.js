@@ -201,59 +201,69 @@ export const getMyLeaves = async (req, res) => {
   }
 };
 
-// ============================
-// 📌 GET USER LEAVE TYPES (Entitlements) – CORRECTED
+   
+  // ============================
+// 📌 GET USER LEAVE TYPES (Entitlements) – CORRECTED & ROBUST
 // ============================
 export const getUserLeaveTypes = async (req, res) => {
   try {
     const userId = getUserId(req);
-    const data = await Entitlement.find({ user: userId })
-      .populate("leaveType", "name");
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
+    // Fetch entitlements with populated leaveType name
+    const entitlements = await Entitlement.find({ user: userId })
+      .populate("leaveType", "name")
+      .lean(); // lean for plain objects, easier manipulation
 
     const today = new Date();
 
-    const updated = data.map((ent) => {
-      const doc = ent.toObject();
+    const formatted = entitlements.map((ent) => {
+      let totalDays = ent.totalDays ?? 0;   // fallback to 0 if null/undefined
+      const maxDays = ent.maxDays || 0;
+      const usedDays = ent.usedDays || 0;
 
-      let totalDays = doc.totalDays; // might be 0, null, or number
-      const maxDays = doc.maxDays || 0;
-      const usedDays = doc.usedDays || 0;
-
-      if (doc.type === "accrual") {
-        const start = doc.startDate || doc.createdAt || today;
+      if (ent.type === "accrual") {
+        const start = ent.startDate || ent.createdAt || today;
         const monthsWorked = differenceInMonths(today, start);
-        const accrued = monthsWorked * (doc.accrualRate || 0);
+        const accrued = monthsWorked * (ent.accrualRate || 0);
         totalDays = Math.min(accrued, maxDays);
       } else {
-        // Fixed leave: if totalDays is undefined/null or < 0, fallback to maxDays
-        if (totalDays == null || totalDays < 0) {
-          totalDays = maxDays;
-        }
-        // If totalDays is 0 but maxDays > 0, we trust maxDays (should not happen after creation fix)
-        if (totalDays === 0 && maxDays > 0) {
+        // Fixed leave: ensure totalDays = maxDays if totalDays is unset/0
+        if (!totalDays || totalDays < 0) {
           totalDays = maxDays;
         }
       }
 
+      // Final safety: if totalDays is still 0 but maxDays > 0, use maxDays
+      if (totalDays === 0 && maxDays > 0) {
+        totalDays = maxDays;
+      }
+
       return {
-        _id: doc._id,
-        leaveType: doc.leaveType,
-        type: doc.type,
-        totalDays,      // now always a number
+        _id: ent._id,
+        leaveType: ent.leaveType || { _id: null, name: "Unknown" },
+        type: ent.type,
+        totalDays,
         usedDays,
         maxDays,
-        accrualRate: doc.accrualRate,
-        startDate: doc.startDate,
+        accrualRate: ent.accrualRate || 0,
+        startDate: ent.startDate || ent.createdAt,
       };
     });
 
-    res.json(updated);
+    console.log(
+      "LEAVE DATA (Served):",
+      JSON.stringify(formatted, null, 2)
+    );
+
+    return res.json(formatted);
   } catch (err) {
     console.error("getUserLeaveTypes error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
-
 // ============================
 // 📌 GET USER LEAVE HISTORY (own)
 // ============================
