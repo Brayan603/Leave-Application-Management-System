@@ -4,68 +4,84 @@ import { differenceInMonths } from "date-fns";
 // ============================
 // ✅ Create Entitlement (Admin)
 // ============================
-export const createEntitlement = async (
-  req,
-  res
-) => {
+export const createEntitlement = async (req, res) => {
   try {
     const {
       userId,
-      leaveTypeIds,
-      type,
-      maxDays,
-      accrualRate,
-      startDate,
+      entitlements,
     } = req.body;
 
     if (
       !userId ||
-      !leaveTypeIds ||
-      leaveTypeIds.length === 0
+      !entitlements ||
+      !Array.isArray(entitlements) ||
+      entitlements.length === 0
     ) {
       return res.status(400).json({
         message:
-          "User and leave type required",
+          "User and entitlements required",
       });
     }
 
     const created = [];
 
-    for (const typeId of leaveTypeIds) {
+    for (const item of entitlements) {
+      const {
+        leaveType,
+        type,
+        maxDays,
+        accrualRate,
+        startDate,
+      } = item;
+
       const exists =
         await Entitlement.findOne({
           user: userId,
-          leaveType: typeId,
+          leaveType,
         });
 
-      if (exists) continue;
+      if (exists) {
+        continue;
+      }
 
-      // fixed leave starts with max
-      // accrual starts at 0
-      const initialBalance =
-        type === "fixed"
-          ? Number(maxDays)
-          : 0;
+      let totalDays = 0;
+
+      // FIXED LEAVE
+      if (type === "fixed") {
+        totalDays = Number(maxDays || 0);
+      }
+
+      // ACCRUAL LEAVE
+      if (type === "accrual") {
+        totalDays = 0;
+      }
 
       const entitlement =
         await Entitlement.create({
           user: userId,
-          leaveType: typeId,
+
+          leaveType,
 
           type,
-          maxDays,
 
-          accrualRate:
-            type === "accrual"
-              ? accrualRate
-              : 0,
+          maxDays: Number(
+            maxDays || 0
+          ),
 
-          totalDays: initialBalance,
+          totalDays,
 
           usedDays: 0,
 
+          accrualRate:
+            type === "accrual"
+              ? Number(
+                  accrualRate || 0
+                )
+              : 0,
+
           startDate:
-            startDate || new Date(),
+            startDate ||
+            new Date(),
         });
 
       created.push(entitlement);
@@ -74,12 +90,16 @@ export const createEntitlement = async (
     return res.status(201).json({
       message:
         "Entitlements assigned successfully",
+
       data: created,
     });
   } catch (err) {
-    console.error(err);
+    console.error(
+      "CREATE ENTITLEMENT ERROR:",
+      err
+    );
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error",
     });
   }
