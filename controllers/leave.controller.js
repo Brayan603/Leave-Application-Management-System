@@ -184,22 +184,48 @@ export const getMyLeaves = async (req, res) => {
 // ============================
 // 📌 GET USER LEAVE TYPES (Entitlements) – with accrual calc
 // ============================
+
+// ============================
+// 📌 GET USER LEAVE TYPES (Entitlements) – correct total & used days
+// ============================
 export const getUserLeaveTypes = async (req, res) => {
   try {
     const userId = getUserId(req);
-    const data = await Entitlement.find({ user: userId }).populate("leaveType", "name");
+    const data = await Entitlement.find({ user: userId })
+      .populate("leaveType", "name");
 
-    // Recalculate accrual leave totals on the fly
+    const today = new Date();
+
     const updated = data.map((ent) => {
       const doc = ent.toObject();
+
+      let totalDays = doc.totalDays || 0;   // current stored value
+      const maxDays = doc.maxDays || 0;
+      const usedDays = doc.usedDays || 0;
+
       if (doc.type === "accrual") {
-        const today = new Date();
+        // Accrual: calculate earned days based on months worked
         const start = doc.startDate || doc.createdAt || today;
         const monthsWorked = differenceInMonths(today, start);
         const accrued = monthsWorked * (doc.accrualRate || 0);
-        doc.totalDays = Math.min(accrued, doc.maxDays);
+        totalDays = Math.min(accrued, maxDays);
+      } else {
+        // Fixed leave: if totalDays is 0 but maxDays is set, use maxDays
+        if (totalDays === 0 && maxDays > 0) {
+          totalDays = maxDays;
+        }
       }
-      return doc;
+
+      return {
+        _id: doc._id,
+        leaveType: doc.leaveType,
+        type: doc.type,
+        totalDays,      // now always correct
+        usedDays,
+        maxDays,
+        accrualRate: doc.accrualRate,
+        startDate: doc.startDate,
+      };
     });
 
     res.json(updated);
@@ -208,6 +234,7 @@ export const getUserLeaveTypes = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+ 
 
 // ============================
 // 📌 GET USER LEAVE HISTORY (own)
