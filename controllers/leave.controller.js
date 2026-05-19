@@ -5,7 +5,7 @@ import Entitlement from "../models/Entitlement.js";
 import LeaveType from "../models/LeaveType.js";
 import User from "../models/User.js";
 import { differenceInMonths } from "date-fns";
-import notificationService from "../services/notificationService.js"; // <-- added
+import notificationService from "../services/notificationService.js";   // ← ADD THIS IMPORT
 
 // ============================
 // 🔐 SAFE USER ID HELPER
@@ -118,6 +118,38 @@ export const applyLeave = async (req, res) => {
   } catch (err) {
     console.error("APPLY LEAVE ERROR:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ============================
+// ✅ GET PENDING LEAVES (Manager only)
+// ============================
+export const getPendingLeaves = async (req, res) => {
+  try {
+    const managerId = getUserId(req);
+    if (!managerId) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    const employees = await User.find({ manager: managerId, role: "employee" }).select("_id");
+    const employeeIds = employees.map((e) => e._id);
+
+    if (employeeIds.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    const leaves = await Leave.find({
+      user: { $in: employeeIds },
+      status: { $regex: /^pending$/i },
+    })
+      .populate("user", "firstName lastName email")
+      .populate("leaveType", "name")
+      .sort({ createdAt: -1 });
+
+    return res.json(leaves);
+  } catch (err) {
+    console.error("PENDING LEAVES ERROR:", err);
+    return res.status(500).json({ message: "Error fetching pending leaves" });
   }
 };
 
