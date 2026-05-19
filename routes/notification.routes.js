@@ -230,3 +230,52 @@ router.get("/admin/all", async (req, res) => {
 });
 
 export default router;
+
+
+// POST /api/notifications/secure-message (accessible by any authenticated user)
+router.post("/secure-message", withIO, async (req, res) => {
+  try {
+    const { recipientId, message } = req.body;
+    if (!recipientId || !message) return res.status(400).json({ error: "recipientId and message required" });
+
+    // The recipient can be any admin/manager (or even another employee if you allow)
+    const recipient = await User.findById(recipientId);
+    if (!recipient) return res.status(404).json({ error: "Recipient not found" });
+
+    const notification = await notificationService.send({
+      recipientId,
+      recipientEmail: recipient.email,
+      recipientPhone: recipient.phone,
+      senderId: req.user.id,
+      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
+      type: "secure_message",
+      title: `Secure message from ${req.user.firstName}`,
+      message,
+      channels: ["in_app"],   // default In-App; employee can’t force email but the recipient may have email in their profile
+      priority: "normal",
+      metadata: {
+        senderName: req.user.name,
+        recipientName: recipient.firstName + " " + recipient.lastName
+      },
+      io: req.app.get("io")
+    });
+
+    // If recipient has email and wants notifications, optionally send email
+    if (recipient.notificationPreferences?.email && recipient.email) {
+      // fire-and-forget
+      emailService.sendEmail({
+        to: recipient.email,
+        type: "secure_message",
+        data: {
+          recipientName: recipient.firstName,
+          senderName: req.user.name,
+          message
+        }
+      }).catch(err => console.error("Email fallback failed:", err.message));
+    }
+
+    res.json({ success: true, notification });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
