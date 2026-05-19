@@ -576,3 +576,67 @@ export const getAllLeavesSummary = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+// In applyLeave (after creating the leave)
+const leave = await Leave.create({...});  // existing code
+
+// --- ADD NOTIFICATION ---
+try {
+  const manager = await User.findById(leave.user.manager);
+  if (manager) {
+    await notificationService.send({
+      recipientId: manager._id,
+      recipientEmail: manager.email,
+      recipientPhone: manager.phone,
+      senderId: userId,
+      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
+      type: "leave_submitted",
+      title: `Leave Request from ${req.user.firstName}`,
+      message: `${req.user.firstName} ${req.user.lastName} has applied for ${leaveType.name} (${days} days).`,
+      channels: ["in_app", "email"],  // notify manager
+      metadata: {
+        employeeName: req.user.firstName + " " + req.user.lastName,
+        leaveType: leaveType.name,
+        startDate: start,
+        endDate: end,
+        days,
+        reason
+      },
+      io: req.app.get("io")
+    });
+  }
+} catch (err) {
+  console.error("Leave submitted notification error:", err.message);
+}
+
+// In updateLeaveStatus (when approving/rejecting)
+if (newStatus === "Approved") {
+  // ... existing balance deduction
+
+  // --- ADD NOTIFICATION ---
+  try {
+    await notificationService.send({
+      recipientId: leave.user._id,
+      recipientEmail: leave.user.email,
+      recipientPhone: leave.user.phone,
+      senderId: managerId,
+      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
+      type: "leave_approved",
+      title: "Leave Approved",
+      message: `Your ${leaveType.name} leave (${leave.days} days) has been approved.`,
+      channels: ["in_app", "email"],
+      metadata: {
+        employeeName: leave.user.firstName + " " + leave.user.lastName,
+        leaveType: leaveType.name,
+        startDate: leave.start,
+        endDate: leave.end,
+        days: leave.days,
+        approvedBy: req.user.name
+      },
+      io: req.app.get("io")
+    });
+  } catch (err) {
+    console.error("Leave approval notification error:", err.message);
+  }
+}
