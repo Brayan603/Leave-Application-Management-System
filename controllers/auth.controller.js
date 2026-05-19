@@ -70,6 +70,27 @@ export const loginUser = async (req, res) => {
       },
     });
 
+    // Inside login function, after saving token/user
+try {
+  const notificationService = (await import("../services/notificationService.js")).default;
+  await notificationService.send({
+    recipientId: user._id,
+    recipientEmail: null,           // no email for login
+    recipientPhone: null,
+    senderId: null,
+    senderName: "System",
+    type: "login_success",
+    title: "Logged in",
+    message: "You have logged in successfully.",
+    channels: ["in_app"],          // only in-app notification
+    priority: "low",
+    metadata: {},
+    io: req.app.get("io"),
+  });
+} catch (err) {
+  console.error("Login notification error:", err.message);
+}
+
   } catch (error) {
     console.error("LOGIN ERROR:", error);
     return res.status(500).json({ message: "Server error" });
