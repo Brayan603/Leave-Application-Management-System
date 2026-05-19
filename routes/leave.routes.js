@@ -11,7 +11,7 @@ import {
   getUserLeaveHistoryById,
   getManagerLeaves,
   getAllLeavesForAdmin,      // ✅ required for /admin/all
-  getAllLeavesSummary,       // ✅ required for /admin/summary
+  //getAllLeavesSummary,       // ✅ required for /admin/summary
 } from "../controllers/leave.controller.js";
 
 import { protect, protectAdmin, requireManager } from "../middleware/auth.middleware.js";
@@ -37,7 +37,7 @@ router.put("/:id/status", protect, requireManager, updateLeaveStatus);
 router.get("/manager/leaves", protect, requireManager, getManagerLeaves);
 
 // Admin-only routes – summary must be defined before /all (more specific first)
-router.get("/admin/summary", protectAdmin, getAllLeavesSummary);
+//router.get("/admin/summary", protectAdmin, getAllLeavesSummary);
 router.get("/admin/all", protectAdmin, getAllLeavesForAdmin);
 
 export default router;
