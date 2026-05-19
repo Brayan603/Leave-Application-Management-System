@@ -279,3 +279,39 @@ router.post("/secure-message", withIO, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// POST /api/notifications/admin/announcement
+router.post("/admin/announcement", withIO, async (req, res) => {
+  try {
+    const { title, message, actionUrl, actionLabel } = req.body;
+    if (!title || !message) return res.status(400).json({ error: "title and message required" });
+
+    // Fetch all employees and managers
+    const users = await User.find({ role: { $in: ["employee", "manager"] } }).select("_id email phone firstName lastName");
+    if (!users.length) return res.status(200).json({ message: "No users to notify" });
+
+    const recipients = users.map(u => ({
+      id: u._id,
+      email: u.email,
+      phone: u.phone,
+      name: u.firstName + " " + u.lastName
+    }));
+
+    const result = await broadcast({
+      senderId: req.user.id,
+      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
+      type: "announcement",
+      title,
+      message,
+      channels: ["in_app"],   // <--- ONLY In-App
+      priority: "normal",
+      recipients,
+      metadata: { actionUrl, actionLabel },
+      io: req.app.get("io")
+    });
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
