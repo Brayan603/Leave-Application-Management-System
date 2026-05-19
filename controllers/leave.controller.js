@@ -1,3 +1,4 @@
+// leave.controller.js
 import mongoose from "mongoose";
 import Leave from "../models/LeaveRequest.js";
 import Entitlement from "../models/Entitlement.js";
@@ -47,7 +48,7 @@ export const applyLeave = async (req, res) => {
       return res.status(400).json({ message: "Not entitled to this leave type" });
     }
 
-    // --- Recalculate totalDays for accrual leave on the fly ---
+    // Recalculate totalDays for accrual leave on the fly
     let currentTotalDays = entitlement.totalDays;
     if (entitlement.type === "accrual") {
       const today = new Date();
@@ -56,7 +57,6 @@ export const applyLeave = async (req, res) => {
       const accrued = monthsWorked * (entitlement.accrualRate || 0);
       currentTotalDays = Math.min(accrued, entitlement.maxDays);
     } else {
-      // Fixed: totalDays should be maxDays if somehow not set
       if (!currentTotalDays && entitlement.maxDays) {
         currentTotalDays = entitlement.maxDays;
       }
@@ -69,6 +69,7 @@ export const applyLeave = async (req, res) => {
       });
     }
 
+    // ✅ FIXED LINE (was placeholder "{...}") – actual creation
     const leave = await Leave.create({
       user: userId,
       leaveType: leaveType._id,
@@ -215,7 +216,7 @@ export const getMyLeaves = async (req, res) => {
 };
 
 // ============================
-// 📌 GET USER LEAVE TYPES (Entitlements) – CORRECTED
+// 📌 GET USER LEAVE TYPES (Entitlements)
 // ============================
 export const getUserLeaveTypes = async (req, res) => {
   try {
@@ -223,50 +224,28 @@ export const getUserLeaveTypes = async (req, res) => {
     const data = await Entitlement.find({ user: userId }).populate("leaveType", "name");
 
     const today = new Date();
-
     const result = data.map((ent) => {
       const doc = ent.toObject();
-
-      const entType   = doc.type;       // "fixed" | "accrual"
-      const maxDays   = doc.maxDays  ?? 0;
-      const usedDays  = doc.usedDays ?? 0;
-
       let totalDays;
-
-      if (entType === "accrual") {
-        /*
-         * Accrual: compute days earned so far.
-         * Formula: monthsWorked × accrualRate, capped at maxDays.
-         * Result CAN be 0 – that is correct and must NOT be replaced by maxDays.
-         */
-        const accrualStart  = doc.startDate || doc.createdAt || today;
-        const monthsWorked  = differenceInMonths(today, new Date(accrualStart));
-        const accrued       = monthsWorked * (doc.accrualRate || 0);
-        totalDays           = Math.min(accrued, maxDays);
+      if (doc.type === "accrual") {
+        const accrualStart = doc.startDate || doc.createdAt || today;
+        const monthsWorked = differenceInMonths(today, new Date(accrualStart));
+        const accrued = monthsWorked * (doc.accrualRate || 0);
+        totalDays = Math.min(accrued, doc.maxDays);
       } else {
-        /*
-         * Fixed: admin sets an explicit entitlement.
-         * Use totalDays from DB.  If it was never set (legacy data),
-         * fall back to maxDays.  0 is treated as "not set" for fixed
-         * entitlements because fixed leave is always pre-allocated.
-         */
-        totalDays = (doc.totalDays > 0)
-          ? doc.totalDays
-          : (maxDays > 0 ? maxDays : 0);
+        totalDays = (doc.totalDays > 0) ? doc.totalDays : (doc.maxDays ?? 0);
       }
-
       return {
-        _id:         doc._id,
-        leaveType:   doc.leaveType,
-        type:        entType,          // ← returned so frontend knows accrual vs fixed
-        totalDays,                     // ← the definitive computed value
-        usedDays,
-        maxDays,
-        accrualRate: doc.accrualRate ?? 0,
-        startDate:   doc.startDate,
+        _id: doc._id,
+        leaveType: doc.leaveType,
+        type: doc.type,
+        totalDays,
+        usedDays: doc.usedDays || 0,
+        maxDays: doc.maxDays,
+        accrualRate: doc.accrualRate || 0,
+        startDate: doc.startDate,
       };
     });
-
     return res.json(result);
   } catch (err) {
     console.error("getUserLeaveTypes error:", err);
@@ -286,18 +265,17 @@ export const getUserLeaveHistory = async (req, res) => {
       .sort({ createdAt: -1 });
 
     const formatted = leaves.map((l) => ({
-      id:         l._id,
-      userId:     l.user?._id?.toString(),
-      type:       l.leaveType?.name || "Unknown",
-      start:      l.start,
-      end:        l.end,
-      days:       l.days,
-      reason:     l.reason,
-      status:     l.status,
+      id: l._id,
+      userId: l.user?._id?.toString(),
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
       approvedBy: l.approvedBy ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}` : "-",
-      createdAt:  l.createdAt,
+      createdAt: l.createdAt,
     }));
-
     return res.json(formatted);
   } catch (err) {
     console.error(err);
@@ -311,27 +289,23 @@ export const getUserLeaveHistory = async (req, res) => {
 export const getUserLeaveHistoryById = async (req, res) => {
   try {
     const { id } = req.params;
-
     const leaves = await Leave.find({ user: id })
       .populate("leaveType", "name")
       .populate("approvedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
 
     const formatted = leaves.map((l) => ({
-      id:         l._id,
-      userId:     l.user?._id?.toString(),
-      type:       l.leaveType?.name || "Unknown",
-      start:      l.start,
-      end:        l.end,
-      days:       l.days,
-      reason:     l.reason,
-      status:     l.status,
-      approvedBy: l.approvedBy
-        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
-        : "-",
+      id: l._id,
+      userId: l.user?._id?.toString(),
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
+      approvedBy: l.approvedBy ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}` : "-",
       createdAt: l.createdAt,
     }));
-
     return res.json(formatted);
   } catch (err) {
     console.error("GET USER LEAVE HISTORY BY ID ERROR:", err);
@@ -345,16 +319,11 @@ export const getUserLeaveHistoryById = async (req, res) => {
 export const getManagerLeaves = async (req, res) => {
   try {
     const managerId = getUserId(req);
-    if (!managerId) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
+    if (!managerId) return res.status(401).json({ message: "Not authorized" });
 
     const employees = await User.find({ manager: managerId, role: "employee" }).select("_id");
     const employeeIds = employees.map((e) => e._id);
-
-    if (employeeIds.length === 0) {
-      return res.json([]);
-    }
+    if (employeeIds.length === 0) return res.json([]);
 
     const leaves = await Leave.find({ user: { $in: employeeIds } })
       .populate("user", "firstName lastName email")
@@ -363,21 +332,18 @@ export const getManagerLeaves = async (req, res) => {
       .sort({ start: 1 });
 
     const formatted = leaves.map((l) => ({
-      id:         l._id,
-      userId:     l.user?._id?.toString(),
-      employee:   l.user ? `${l.user.firstName} ${l.user.lastName}` : "Unknown",
-      type:       l.leaveType?.name || "Unknown",
-      start:      l.start,
-      end:        l.end,
-      days:       l.days,
-      reason:     l.reason,
-      status:     l.status,
-      approvedBy: l.approvedBy
-        ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}`
-        : "-",
+      id: l._id,
+      userId: l.user?._id?.toString(),
+      employee: l.user ? `${l.user.firstName} ${l.user.lastName}` : "Unknown",
+      type: l.leaveType?.name || "Unknown",
+      start: l.start,
+      end: l.end,
+      days: l.days,
+      reason: l.reason,
+      status: l.status,
+      approvedBy: l.approvedBy ? `${l.approvedBy.firstName} ${l.approvedBy.lastName}` : "-",
       createdAt: l.createdAt,
     }));
-
     return res.json(formatted);
   } catch (err) {
     console.error("GET MANAGER LEAVES ERROR:", err);
@@ -386,7 +352,7 @@ export const getManagerLeaves = async (req, res) => {
 };
 
 // ============================
-// 🛡️ GET ALL LEAVES (ADMIN ONLY) – full populated list with filters
+// 🛡️ GET ALL LEAVES (ADMIN ONLY)
 // ============================
 export const getAllLeavesForAdmin = async (req, res) => {
   try {
@@ -394,50 +360,42 @@ export const getAllLeavesForAdmin = async (req, res) => {
       startDate, endDate, organization, department,
       subDepartment, employee, leaveType, status,
     } = req.query;
-
     const filter = {};
 
     if (startDate) {
       const d = new Date(startDate);
       if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid startDate" });
-      filter.start = { ...filter.start, $gte: d };
+      filter.start = { $gte: d };
     }
     if (endDate) {
       const d = new Date(endDate);
       if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid endDate" });
-      filter.end = { ...filter.end, $lte: d };
+      filter.end = { $lte: d };
     }
-
     if (employee) {
-      if (!mongoose.Types.ObjectId.isValid(employee))
-        return res.status(400).json({ message: "Invalid employee ID" });
+      if (!mongoose.Types.ObjectId.isValid(employee)) return res.status(400).json({ message: "Invalid employee ID" });
       filter.user = new mongoose.Types.ObjectId(employee);
     } else if (subDepartment) {
-      if (!mongoose.Types.ObjectId.isValid(subDepartment))
-        return res.status(400).json({ message: "Invalid subDepartment ID" });
+      if (!mongoose.Types.ObjectId.isValid(subDepartment)) return res.status(400).json({ message: "Invalid subDepartment ID" });
       const users = await User.find({ subDepartment }).select("_id");
-      const ids = users.map((u) => u._id);
+      const ids = users.map(u => u._id);
       if (ids.length) filter.user = { $in: ids };
       else return res.json([]);
     } else if (department) {
-      if (!mongoose.Types.ObjectId.isValid(department))
-        return res.status(400).json({ message: "Invalid department ID" });
+      if (!mongoose.Types.ObjectId.isValid(department)) return res.status(400).json({ message: "Invalid department ID" });
       const users = await User.find({ department }).select("_id");
-      const ids = users.map((u) => u._id);
+      const ids = users.map(u => u._id);
       if (ids.length) filter.user = { $in: ids };
       else return res.json([]);
     } else if (organization) {
-      if (!mongoose.Types.ObjectId.isValid(organization))
-        return res.status(400).json({ message: "Invalid organization ID" });
+      if (!mongoose.Types.ObjectId.isValid(organization)) return res.status(400).json({ message: "Invalid organization ID" });
       const users = await User.find({ organization }).select("_id");
-      const ids = users.map((u) => u._id);
+      const ids = users.map(u => u._id);
       if (ids.length) filter.user = { $in: ids };
       else return res.json([]);
     }
-
     if (leaveType) {
-      if (!mongoose.Types.ObjectId.isValid(leaveType))
-        return res.status(400).json({ message: "Invalid leaveType ID" });
+      if (!mongoose.Types.ObjectId.isValid(leaveType)) return res.status(400).json({ message: "Invalid leaveType ID" });
       filter.leaveType = new mongoose.Types.ObjectId(leaveType);
     }
     if (status) filter.status = status;
@@ -447,7 +405,6 @@ export const getAllLeavesForAdmin = async (req, res) => {
       .populate("leaveType", "name")
       .populate("approvedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
-
     return res.json(leaves);
   } catch (error) {
     console.error("ADMIN LEAVES ERROR:", error);
@@ -456,7 +413,7 @@ export const getAllLeavesForAdmin = async (req, res) => {
 };
 
 // ============================
-// 🚀 GET ALL LEAVES SUMMARY (ADMIN ONLY) – aggregation-optimised
+// 🚀 GET ALL LEAVES SUMMARY (ADMIN ONLY)
 // ============================
 export const getAllLeavesSummary = async (req, res) => {
   try {
@@ -464,7 +421,6 @@ export const getAllLeavesSummary = async (req, res) => {
       startDate, endDate, organization, department,
       subDepartment, employee, leaveType, status,
     } = req.query;
-
     const match = {};
 
     if (startDate) {
@@ -477,44 +433,31 @@ export const getAllLeavesSummary = async (req, res) => {
       if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid endDate" });
       match.end = { $lte: d };
     }
-
     if (leaveType) {
-      if (!mongoose.Types.ObjectId.isValid(leaveType))
-        return res.status(400).json({ message: "Invalid leaveType ID" });
+      if (!mongoose.Types.ObjectId.isValid(leaveType)) return res.status(400).json({ message: "Invalid leaveType ID" });
       match.leaveType = new mongoose.Types.ObjectId(leaveType);
     }
     if (status) match.status = status;
 
     let userIds = null;
     if (employee) {
-      if (!mongoose.Types.ObjectId.isValid(employee))
-        return res.status(400).json({ message: "Invalid employee ID" });
+      if (!mongoose.Types.ObjectId.isValid(employee)) return res.status(400).json({ message: "Invalid employee ID" });
       match.user = new mongoose.Types.ObjectId(employee);
     } else if (subDepartment) {
-      if (!mongoose.Types.ObjectId.isValid(subDepartment))
-        return res.status(400).json({ message: "Invalid subDepartment ID" });
+      if (!mongoose.Types.ObjectId.isValid(subDepartment)) return res.status(400).json({ message: "Invalid subDepartment ID" });
       const users = await User.find({ subDepartment }).select("_id");
-      userIds = users.map((u) => u._id);
+      userIds = users.map(u => u._id);
     } else if (department) {
-      if (!mongoose.Types.ObjectId.isValid(department))
-        return res.status(400).json({ message: "Invalid department ID" });
+      if (!mongoose.Types.ObjectId.isValid(department)) return res.status(400).json({ message: "Invalid department ID" });
       const users = await User.find({ department }).select("_id");
-      userIds = users.map((u) => u._id);
+      userIds = users.map(u => u._id);
     } else if (organization) {
-      if (!mongoose.Types.ObjectId.isValid(organization))
-        return res.status(400).json({ message: "Invalid organization ID" });
+      if (!mongoose.Types.ObjectId.isValid(organization)) return res.status(400).json({ message: "Invalid organization ID" });
       const users = await User.find({ organization }).select("_id");
-      userIds = users.map((u) => u._id);
+      userIds = users.map(u => u._id);
     }
-
     if (userIds !== null) {
-      if (userIds.length === 0) {
-        return res.json({
-          total: 0, approved: 0, pending: 0,
-          rejected: 0, cancelled: 0, totalDays: 0,
-          expiringCount: 0, chartData: [],
-        });
-      }
+      if (userIds.length === 0) return res.json({ total: 0, approved: 0, pending: 0, rejected: 0, cancelled: 0, totalDays: 0, expiringCount: 0, chartData: [] });
       match.user = { $in: userIds };
     }
 
@@ -522,52 +465,47 @@ export const getAllLeavesSummary = async (req, res) => {
       { $match: match },
       {
         $group: {
-          _id:       null,
-          total:     { $sum: 1 },
+          _id: null,
+          total: { $sum: 1 },
           totalDays: { $sum: "$days" },
-          approved:  { $sum: { $cond: [{ $eq: ["$status", "Approved"]  }, 1, 0] } },
-          pending:   { $sum: { $cond: [{ $eq: ["$status", "Pending"]   }, 1, 0] } },
-          rejected:  { $sum: { $cond: [{ $eq: ["$status", "Rejected"]  }, 1, 0] } },
-          cancelled: { $sum: { $cond: [{ $eq: ["$status", "Cancelled"] }, 1, 0] } },
-        },
-      },
+          approved: { $sum: { $cond: [{ $eq: ["$status", "Approved"] }, 1, 0] } },
+          pending: { $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0] } },
+          cancelled: { $sum: { $cond: [{ $eq: ["$status", "Cancelled"] }, 1, 0] } }
+        }
+      }
     ];
-
     const result = await Leave.aggregate(pipeline);
 
     if (result.length === 0) {
-      return res.json({
-        total: 0, approved: 0, pending: 0,
-        rejected: 0, cancelled: 0, totalDays: 0,
-        expiringCount: 0, chartData: [],
-      });
+      return res.json({ total: 0, approved: 0, pending: 0, rejected: 0, cancelled: 0, totalDays: 0, expiringCount: 0, chartData: [] });
     }
 
-    const agg    = result[0];
-    const today  = new Date();
+    const agg = result[0];
+    const today = new Date();
     const future = new Date();
     future.setDate(today.getDate() + 7);
 
     const expiringLeaves = await Leave.distinct("user", {
       ...match,
       status: { $in: ["Approved", "Pending"] },
-      end:    { $gte: today, $lte: future },
+      end: { $gte: today, $lte: future }
     });
 
     const chartData = [
-      { name: "Approved",  value: agg.approved  },
-      { name: "Pending",   value: agg.pending   },
-      { name: "Rejected",  value: agg.rejected  },
+      { name: "Approved", value: agg.approved },
+      { name: "Pending", value: agg.pending },
+      { name: "Rejected", value: agg.rejected },
       { name: "Cancelled", value: agg.cancelled },
     ];
 
     return res.json({
-      total:         agg.total,
-      approved:      agg.approved,
-      pending:       agg.pending,
-      rejected:      agg.rejected,
-      cancelled:     agg.cancelled,
-      totalDays:     agg.totalDays,
+      total: agg.total,
+      approved: agg.approved,
+      pending: agg.pending,
+      rejected: agg.rejected,
+      cancelled: agg.cancelled,
+      totalDays: agg.totalDays,
       expiringCount: expiringLeaves.length,
       chartData,
     });
@@ -576,67 +514,3 @@ export const getAllLeavesSummary = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
-
-
-// In applyLeave (after creating the leave)
-const leave = await Leave.create({...});  // existing code
-
-// --- ADD NOTIFICATION ---
-try {
-  const manager = await User.findById(leave.user.manager);
-  if (manager) {
-    await notificationService.send({
-      recipientId: manager._id,
-      recipientEmail: manager.email,
-      recipientPhone: manager.phone,
-      senderId: userId,
-      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
-      type: "leave_submitted",
-      title: `Leave Request from ${req.user.firstName}`,
-      message: `${req.user.firstName} ${req.user.lastName} has applied for ${leaveType.name} (${days} days).`,
-      channels: ["in_app", "email"],  // notify manager
-      metadata: {
-        employeeName: req.user.firstName + " " + req.user.lastName,
-        leaveType: leaveType.name,
-        startDate: start,
-        endDate: end,
-        days,
-        reason
-      },
-      io: req.app.get("io")
-    });
-  }
-} catch (err) {
-  console.error("Leave submitted notification error:", err.message);
-}
-
-// In updateLeaveStatus (when approving/rejecting)
-if (newStatus === "Approved") {
-  // ... existing balance deduction
-
-  // --- ADD NOTIFICATION ---
-  try {
-    await notificationService.send({
-      recipientId: leave.user._id,
-      recipientEmail: leave.user.email,
-      recipientPhone: leave.user.phone,
-      senderId: managerId,
-      senderName: req.user.name || `${req.user.firstName} ${req.user.lastName}`,
-      type: "leave_approved",
-      title: "Leave Approved",
-      message: `Your ${leaveType.name} leave (${leave.days} days) has been approved.`,
-      channels: ["in_app", "email"],
-      metadata: {
-        employeeName: leave.user.firstName + " " + leave.user.lastName,
-        leaveType: leaveType.name,
-        startDate: leave.start,
-        endDate: leave.end,
-        days: leave.days,
-        approvedBy: req.user.name
-      },
-      io: req.app.get("io")
-    });
-  } catch (err) {
-    console.error("Leave approval notification error:", err.message);
-  }
-}
