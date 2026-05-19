@@ -20,9 +20,6 @@ const wrap = (title, body) => `
     body { font-family: 'Segoe UI', Arial, sans-serif; background:#f1f5f9; color:#1e293b; }
     .container { max-width:600px; margin:32px auto; background:#fff;
       border-radius:12px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.08); }
-    .header { background:linear-gradient(135deg,#6366f1,#8b5cf6); padding:32px 40px; color:#fff; }
-    .header h1 { font-size:22px; font-weight:700; margin-bottom:4px; }
-    .header p  { font-size:13px; opacity:.85; }
     .body { padding:32px 40px; }
     .body p { font-size:15px; line-height:1.7; margin-bottom:16px; }
     .info-box { background:#f8fafc; border-left:4px solid #6366f1;
@@ -41,13 +38,10 @@ const wrap = (title, body) => `
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>Quantura Leave Management</h1>
-      <p>Automated Notification System</p>
-    </div>
+    <!-- Header section removed -->
     <div class="body">${body}</div>
     <div class="footer">
-      This is an automated message from Quantura Technologies LMS.<br/>
+      This is an automated Email from Quantura Technologies Leave Management System. The Information contained in here is very confidential. If not the intended receiver please ignore and delete.<br/>
       Please do not reply to this email.
     </div>
   </div>
