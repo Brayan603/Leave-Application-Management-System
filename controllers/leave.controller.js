@@ -5,6 +5,7 @@ import Entitlement from "../models/Entitlement.js";
 import LeaveType from "../models/LeaveType.js";
 import User from "../models/User.js";
 import { differenceInMonths } from "date-fns";
+import notificationService from "../services/notificationService.js"; // <-- added
 
 // ============================
 // 🔐 SAFE USER ID HELPER
@@ -22,7 +23,7 @@ const isSameId = (a, b) => {
 };
 
 // ============================
-// ✅ APPLY LEAVE – handles accrual correctly
+// ✅ APPLY LEAVE – with notification
 // ============================
 export const applyLeave = async (req, res) => {
   try {
@@ -43,7 +44,6 @@ export const applyLeave = async (req, res) => {
       user: userId,
       leaveType: leaveType._id,
     });
-
     if (!entitlement) {
       return res.status(400).json({ message: "Not entitled to this leave type" });
     }
@@ -69,7 +69,7 @@ export const applyLeave = async (req, res) => {
       });
     }
 
-    // ✅ FIXED LINE (was placeholder "{...}") – actual creation
+    // Create leave request
     const leave = await Leave.create({
       user: userId,
       leaveType: leaveType._id,
@@ -81,6 +81,39 @@ export const applyLeave = async (req, res) => {
       status: "Pending",
     });
 
+    // ───────────────────────────────────────────────
+    // 📩 Notify manager about the new leave request
+    // ───────────────────────────────────────────────
+    try {
+      const employee = await User.findById(userId).select("firstName lastName manager");
+      const manager = await User.findById(employee.manager).select("email phone firstName lastName");
+      if (manager) {
+        await notificationService.send({
+          recipientId: manager._id,
+          recipientEmail: manager.email,
+          recipientPhone: manager.phone,
+          senderId: userId,
+          senderName: `${employee.firstName} ${employee.lastName}`,
+          type: "leave_submitted",
+          title: `Leave Request from ${employee.firstName} ${employee.lastName}`,
+          message: `${employee.firstName} ${employee.lastName} applied for ${leaveType.name} (${days} days).`,
+          channels: ["in_app", "email"],
+          priority: "normal",
+          metadata: {
+            employeeName: `${employee.firstName} ${employee.lastName}`,
+            leaveType: leaveType.name,
+            startDate: start,
+            endDate: end,
+            days,
+            reason,
+          },
+          io: req.app.get("io"),
+        });
+      }
+    } catch (notifErr) {
+      console.error("Leave submitted notification error:", notifErr.message);
+    }
+
     return res.status(201).json({ message: "Leave applied successfully", leave });
   } catch (err) {
     console.error("APPLY LEAVE ERROR:", err);
@@ -89,39 +122,7 @@ export const applyLeave = async (req, res) => {
 };
 
 // ============================
-// ✅ GET PENDING LEAVES (Manager only)
-// ============================
-export const getPendingLeaves = async (req, res) => {
-  try {
-    const managerId = getUserId(req);
-    if (!managerId) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-
-    const employees = await User.find({ manager: managerId, role: "employee" }).select("_id");
-    const employeeIds = employees.map((e) => e._id);
-
-    if (employeeIds.length === 0) {
-      return res.status(200).json([]);
-    }
-
-    const leaves = await Leave.find({
-      user: { $in: employeeIds },
-      status: { $regex: /^pending$/i },
-    })
-      .populate("user", "firstName lastName email")
-      .populate("leaveType", "name")
-      .sort({ createdAt: -1 });
-
-    return res.json(leaves);
-  } catch (err) {
-    console.error("PENDING LEAVES ERROR:", err);
-    return res.status(500).json({ message: "Error fetching pending leaves" });
-  }
-};
-
-// ============================
-// ✅ UPDATE LEAVE STATUS
+// ✅ UPDATE LEAVE STATUS – with notification
 // ============================
 export const updateLeaveStatus = async (req, res) => {
   try {
@@ -133,7 +134,7 @@ export const updateLeaveStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid action" });
     }
 
-    const leave = await Leave.findById(id).populate("user");
+    const leave = await Leave.findById(id).populate("user leaveType");
     if (!leave) return res.status(404).json({ message: "Leave not found" });
 
     if (!leave.user?.manager) return res.status(403).json({ message: "Employee has no manager" });
@@ -142,7 +143,7 @@ export const updateLeaveStatus = async (req, res) => {
     const newStatus = action === "approve" ? "Approved" : "Rejected";
 
     if (newStatus === "Approved") {
-      const entitlement = await Entitlement.findOne({ user: leave.user._id, leaveType: leave.leaveType });
+      const entitlement = await Entitlement.findOne({ user: leave.user._id, leaveType: leave.leaveType._id });
       if (!entitlement) return res.status(400).json({ message: "Entitlement not found" });
 
       // Recalculate totalDays for accrual
@@ -173,6 +174,43 @@ export const updateLeaveStatus = async (req, res) => {
       { status: newStatus, approvedBy: managerId },
       { new: true }
     );
+
+    // ───────────────────────────────────────────────
+    // 📩 Notify employee about the decision
+    // ───────────────────────────────────────────────
+    try {
+      const employee = leave.user;
+      const manager = await User.findById(managerId).select("firstName lastName");
+      const notifType = newStatus === "Approved" ? "leave_approved" : "leave_rejected";
+
+      await notificationService.send({
+        recipientId: employee._id,
+        recipientEmail: employee.email,
+        recipientPhone: employee.phone,
+        senderId: managerId,
+        senderName: `${manager.firstName} ${manager.lastName}`,
+        type: notifType,
+        title: `Leave ${newStatus}`,
+        message:
+          newStatus === "Approved"
+            ? `Your ${leave.leaveType.name} leave (${leave.days} days) has been approved.`
+            : `Your ${leave.leaveType.name} leave request was rejected.`,
+        channels: ["in_app", "email"],
+        priority: "normal",
+        metadata: {
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          leaveType: leave.leaveType.name,
+          startDate: leave.start,
+          endDate: leave.end,
+          days: leave.days,
+          approvedBy: `${manager.firstName} ${manager.lastName}`,
+        },
+        io: req.app.get("io"),
+      });
+    } catch (notifErr) {
+      console.error("Leave status notification error:", notifErr.message);
+    }
+
     return res.json({ message: `Leave ${newStatus.toLowerCase()} successfully`, leave: updated });
   } catch (err) {
     console.error("UPDATE ERROR:", err);
