@@ -4,7 +4,7 @@ import { differenceInMonths } from "date-fns";
 
 
 // =====================================
-// ✅ CREATE ENTITLEMENT (FIXED)
+// ✅ CREATE ENTITLEMENT (FINAL FIX)
 // =====================================
 export const createEntitlement = async (req, res) => {
   const session = await mongoose.startSession();
@@ -51,12 +51,21 @@ export const createEntitlement = async (req, res) => {
     for (const leaveTypeId of leaveTypeIds) {
       const leaveTypeObjectId = new mongoose.Types.ObjectId(leaveTypeId);
 
-      // =================================
-      // SAFE DUPLICATE CHECK (FIXED)
-      // =================================
+      // =====================================
+      // 🔥 FIXED DUPLICATE CHECK (ROBUST)
+      // handles both ObjectId + string in DB
+      // =====================================
       const exists = await Entitlement.findOne({
-        user: userObjectId,
-        leaveType: leaveTypeObjectId,
+        $or: [
+          {
+            user: userObjectId,
+            leaveType: leaveTypeObjectId,
+          },
+          {
+            user: userId,
+            leaveType: leaveTypeId,
+          },
+        ],
       }).session(session);
 
       if (exists) {
@@ -67,15 +76,15 @@ export const createEntitlement = async (req, res) => {
         continue;
       }
 
-      // =================================
+      // =====================================
       // INITIAL BALANCE
-      // =================================
+      // =====================================
       const initialBalance =
         type === "fixed" ? Number(maxDays) : 0;
 
-      // =================================
+      // =====================================
       // CREATE ENTITLEMENT
-      // =================================
+      // =====================================
       const entitlement = new Entitlement({
         user: userObjectId,
         leaveType: leaveTypeObjectId,
@@ -95,9 +104,9 @@ export const createEntitlement = async (req, res) => {
       created.push(saved);
     }
 
-    // =================================
+    // =====================================
     // COMMIT TRANSACTION
-    // =================================
+    // =====================================
     await session.commitTransaction();
 
     return res.status(201).json({
