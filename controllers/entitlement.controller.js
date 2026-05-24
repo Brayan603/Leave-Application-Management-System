@@ -4,7 +4,7 @@ import { differenceInMonths } from "date-fns";
 
 
 // =====================================
-// ✅ CREATE ENTITLEMENT
+// ✅ CREATE ENTITLEMENT (FIXED)
 // =====================================
 export const createEntitlement = async (req, res) => {
   const session = await mongoose.startSession();
@@ -25,9 +25,7 @@ export const createEntitlement = async (req, res) => {
     // VALIDATION
     // ==========================
     if (!userId) {
-      return res.status(400).json({
-        message: "User ID is required",
-      });
+      throw new Error("User ID is required");
     }
 
     if (
@@ -35,35 +33,37 @@ export const createEntitlement = async (req, res) => {
       !Array.isArray(leaveTypeIds) ||
       leaveTypeIds.length === 0
     ) {
-      return res.status(400).json({
-        message: "Leave types are required",
-      });
+      throw new Error("Leave types are required");
     }
 
     if (!["fixed", "accrual"].includes(type)) {
-      return res.status(400).json({
-        message: "Invalid entitlement type",
-      });
+      throw new Error("Invalid entitlement type");
     }
 
     if (Number(maxDays) < 0) {
-      return res.status(400).json({
-        message: "maxDays cannot be negative",
-      });
+      throw new Error("maxDays cannot be negative");
     }
 
     const created = [];
 
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
     for (const leaveTypeId of leaveTypeIds) {
+      const leaveTypeObjectId = new mongoose.Types.ObjectId(leaveTypeId);
+
       // =================================
-      // CHECK EXISTING ENTITLEMENT
+      // SAFE DUPLICATE CHECK (FIXED)
       // =================================
       const exists = await Entitlement.findOne({
-        user: userId,
-        leaveType: leaveTypeId,
+        user: userObjectId,
+        leaveType: leaveTypeObjectId,
       }).session(session);
 
       if (exists) {
+        console.log("SKIPPING EXISTING:", {
+          userId,
+          leaveTypeId,
+        });
         continue;
       }
 
@@ -71,90 +71,52 @@ export const createEntitlement = async (req, res) => {
       // INITIAL BALANCE
       // =================================
       const initialBalance =
-        type === "fixed"
-          ? Number(maxDays)
-          : 0;
+        type === "fixed" ? Number(maxDays) : 0;
 
       // =================================
-      // CREATE
+      // CREATE ENTITLEMENT
       // =================================
       const entitlement = new Entitlement({
-        user: userId,
-        leaveType: leaveTypeId,
-
+        user: userObjectId,
+        leaveType: leaveTypeObjectId,
         type,
-
         maxDays: Number(maxDays),
-
         accrualRate:
           type === "accrual"
             ? Number(accrualRate || 0)
             : 0,
-
         totalDays: initialBalance,
-
         usedDays: 0,
-
-        startDate:
-          startDate || new Date(),
+        startDate: startDate || new Date(),
       });
 
-      // =================================
-      // FORCE SAVE
-      // =================================
-      const saved = await entitlement.save({
-        session,
-      });
-
-      // =================================
-      // VERIFY SAVE
-      // =================================
-      const verify =
-        await Entitlement.findById(
-          saved._id
-        ).session(session);
-
-      if (!verify) {
-        throw new Error(
-          "Entitlement failed to persist"
-        );
-      }
+      const saved = await entitlement.save({ session });
 
       created.push(saved);
     }
 
     // =================================
-    // COMMIT
+    // COMMIT TRANSACTION
     // =================================
     await session.commitTransaction();
 
     return res.status(201).json({
       success: true,
-      message:
-        "Entitlements assigned successfully",
+      message: "Entitlements assigned successfully",
       count: created.length,
       data: created,
     });
+
   } catch (err) {
     await session.abortTransaction();
 
-    console.error(
-      "CREATE ENTITLEMENT ERROR:",
-      err
-    );
-
-    // Duplicate index protection
-    if (err.code === 11000) {
-      return res.status(409).json({
-        message:
-          "Entitlement already exists",
-      });
-    }
+    console.error("CREATE ENTITLEMENT ERROR:", err.message);
 
     return res.status(500).json({
-      message: "Server error",
-      error: err.message,
+      success: false,
+      message: err.message,
     });
+
   } finally {
     session.endSession();
   }
@@ -162,185 +124,131 @@ export const createEntitlement = async (req, res) => {
 
 
 // =====================================
-// ✅ GET ALL ENTITLEMENTS
+// GET ALL ENTITLEMENTS
 // =====================================
-export const getAllEntitlements =
-  async (req, res) => {
-    try {
-      const data =
-        await Entitlement.find()
-          .populate(
-            "user",
-            "firstName lastName email"
-          )
-          .populate(
-            "leaveType",
-            "name"
-          )
-          .sort({
-            createdAt: -1,
-          });
+export const getAllEntitlements = async (req, res) => {
+  try {
+    const data = await Entitlement.find()
+      .populate("user", "firstName lastName email")
+      .populate("leaveType", "name")
+      .sort({ createdAt: -1 });
 
-      return res.status(200).json({
-        success: true,
-        count: data.length,
-        data,
-      });
-    } catch (err) {
-      console.error(err);
-
-      return res.status(500).json({
-        message: err.message,
-      });
-    }
-  };
+    return res.status(200).json({
+      success: true,
+      count: data.length,
+      data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
 
 
 // =====================================
-// ✅ GET USER ENTITLEMENTS
+// GET USER ENTITLEMENTS
 // =====================================
-export const getUserEntitlements =
-  async (req, res) => {
-    try {
-      const { userId } = req.params;
+export const getUserEntitlements = async (req, res) => {
+  try {
+    const { userId } = req.params;
 
-      const entitlements =
-        await Entitlement.find({
-          user: userId,
-        }).populate(
-          "leaveType",
-          "name"
+    const entitlements = await Entitlement.find({
+      user: new mongoose.Types.ObjectId(userId),
+    }).populate("leaveType", "name");
+
+    const data = entitlements.map((e) => {
+      let calculatedTotal = e.totalDays;
+
+      if (e.type === "accrual") {
+        const monthsWorked = Math.max(
+          0,
+          differenceInMonths(new Date(), e.startDate)
         );
 
-      // ================================
-      // SAFE CALCULATED RESPONSE
-      // ================================
-      const data = entitlements.map(
-        (e) => {
-          let calculatedTotal =
-            e.totalDays;
+        const accrued = monthsWorked * e.accrualRate;
 
-          // accrual calculation
-          if (e.type === "accrual") {
-            const today = new Date();
-
-            const monthsWorked =
-              Math.max(
-                0,
-                differenceInMonths(
-                  today,
-                  e.startDate
-                )
-              );
-
-            const accrued =
-              monthsWorked *
-              e.accrualRate;
-
-            calculatedTotal =
-              Math.min(
-                accrued,
-                e.maxDays
-              );
-          }
-
-          return {
-            ...e.toObject(),
-
-            totalDays:
-              calculatedTotal,
-
-            availableDays:
-              calculatedTotal -
-              e.usedDays,
-          };
-        }
-      );
-
-      return res.status(200).json({
-        success: true,
-        data,
-      });
-    } catch (err) {
-      console.error(err);
-
-      return res.status(500).json({
-        message: err.message,
-      });
-    }
-  };
-
-
-// =====================================
-// ✅ UPDATE ENTITLEMENT
-// =====================================
-export const updateEntitlement =
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-
-      const updated =
-        await Entitlement.findByIdAndUpdate(
-          id,
-          req.body,
-          {
-            new: true,
-            runValidators: true,
-          }
-        );
-
-      if (!updated) {
-        return res.status(404).json({
-          message:
-            "Entitlement not found",
-        });
+        calculatedTotal = Math.min(accrued, e.maxDays);
       }
 
-      return res.status(200).json({
-        success: true,
-        data: updated,
-      });
-    } catch (err) {
-      console.error(err);
+      return {
+        ...e.toObject(),
+        totalDays: calculatedTotal,
+        availableDays: calculatedTotal - e.usedDays,
+      };
+    });
 
-      return res.status(500).json({
-        message: err.message,
-      });
-    }
-  };
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
 
 
 // =====================================
-// ✅ DELETE ENTITLEMENT
+// UPDATE ENTITLEMENT
 // =====================================
-export const deleteEntitlement =
-  async (req, res) => {
-    try {
-      const { id } = req.params;
+export const updateEntitlement = async (req, res) => {
+  try {
+    const updated = await Entitlement.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
 
-      const deleted =
-        await Entitlement.findByIdAndDelete(
-          id
-        );
-
-      if (!deleted) {
-        return res.status(404).json({
-          message:
-            "Entitlement not found",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "Entitlement deleted successfully",
-      });
-    } catch (err) {
-      console.error(err);
-
-      return res.status(500).json({
-        message: err.message,
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Entitlement not found",
       });
     }
-  };
+
+    return res.status(200).json({
+      success: true,
+      data: updated,
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+
+// =====================================
+// DELETE ENTITLEMENT
+// =====================================
+export const deleteEntitlement = async (req, res) => {
+  try {
+    const deleted = await Entitlement.findByIdAndDelete(req.params.id);
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Entitlement not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Entitlement deleted successfully",
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
 
