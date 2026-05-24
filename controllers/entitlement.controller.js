@@ -2,9 +2,8 @@ import mongoose from "mongoose";
 import Entitlement from "../models/Entitlement.js";
 import { differenceInMonths } from "date-fns";
 
-
 // =====================================
-// ✅ CREATE ENTITLEMENT (FINAL FIX)
+// ✅ CREATE OR UPDATE ENTITLEMENT
 // =====================================
 export const createEntitlement = async (req, res) => {
   const session = await mongoose.startSession();
@@ -44,64 +43,61 @@ export const createEntitlement = async (req, res) => {
       throw new Error("maxDays cannot be negative");
     }
 
-    const created = [];
+    const results = [];
+    let createdCount = 0;
+    let updatedCount = 0;
 
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
     for (const leaveTypeId of leaveTypeIds) {
       const leaveTypeObjectId = new mongoose.Types.ObjectId(leaveTypeId);
 
-      // =====================================
-      // 🔥 FIXED DUPLICATE CHECK (ROBUST)
-      // handles both ObjectId + string in DB
-      // =====================================
-      const exists = await Entitlement.findOne({
-        $or: [
-          {
-            user: userObjectId,
-            leaveType: leaveTypeObjectId,
-          },
-          {
-            user: userId,
-            leaveType: leaveTypeId,
-          },
-        ],
-      }).session(session);
-
-      if (exists) {
-        console.log("SKIPPING EXISTING:", {
-          userId,
-          leaveTypeId,
-        });
-        continue;
-      }
-
-      // =====================================
-      // INITIAL BALANCE
-      // =====================================
-      const initialBalance =
-        type === "fixed" ? Number(maxDays) : 0;
-
-      // =====================================
-      // CREATE ENTITLEMENT
-      // =====================================
-      const entitlement = new Entitlement({
+      let entitlement = await Entitlement.findOne({
         user: userObjectId,
         leaveType: leaveTypeObjectId,
-        type,
-        maxDays: Number(maxDays),
-        accrualRate:
-          type === "accrual"
-            ? Number(accrualRate || 0)
-            : 0,
-        totalDays: initialBalance,
-        usedDays: 0,
-        startDate: startDate || new Date(),
-      });
+      }).session(session);
 
-      const saved = await entitlement.save({ session });
+      const initialBalance = type === "fixed" ? Number(maxDays) : 0;
 
-      created.push(saved);
+      if (entitlement) {
+        // =====================================
+        // 🔄 UPDATE EXISTING ENTITLEMENT
+        // =====================================
+        entitlement.type = type;
+        entitlement.maxDays = Number(maxDays);
+        entitlement.accrualRate =
+          type === "accrual" ? Number(accrualRate || 0) : 0;
+        entitlement.totalDays =
+          type === "fixed" ? Number(maxDays) : entitlement.totalDays;
+        entitlement.startDate = startDate || entitlement.startDate;
+
+        const updated = await entitlement.save({ session });
+        results.push(updated);
+        updatedCount++;
+
+        console.log("UPDATED EXISTING:", { userId, leaveTypeId });
+      } else {
+        // =====================================
+        // CREATE NEW ENTITLEMENT
+        // =====================================
+        entitlement = new Entitlement({
+          user: userObjectId,
+          leaveType: leaveTypeObjectId,
+          type,
+          maxDays: Number(maxDays),
+          accrualRate:
+            type === "accrual" ? Number(accrualRate || 0) : 0,
+          totalDays: initialBalance,
+          usedDays: 0,
+          startDate: startDate || new Date(),
+        });
+
+        const saved = await entitlement.save({ session });
+        results.push(saved);
+        createdCount++;
+
+        console.log("CREATED NEW:", { userId, leaveTypeId });
+      }
     }
 
     // =====================================
@@ -111,9 +107,11 @@ export const createEntitlement = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Entitlements assigned successfully",
-      count: created.length,
-      data: created,
+      message: "Entitlements processed successfully",
+      createdCount,
+      updatedCount,
+      totalCount: results.length,
+      data: results,
     });
 
   } catch (err) {
@@ -130,7 +128,6 @@ export const createEntitlement = async (req, res) => {
     session.endSession();
   }
 };
-
 
 // =====================================
 // GET ALL ENTITLEMENTS
@@ -154,7 +151,6 @@ export const getAllEntitlements = async (req, res) => {
     });
   }
 };
-
 
 // =====================================
 // GET USER ENTITLEMENTS
@@ -201,7 +197,6 @@ export const getUserEntitlements = async (req, res) => {
   }
 };
 
-
 // =====================================
 // UPDATE ENTITLEMENT
 // =====================================
@@ -232,7 +227,6 @@ export const updateEntitlement = async (req, res) => {
     });
   }
 };
-
 
 // =====================================
 // DELETE ENTITLEMENT
