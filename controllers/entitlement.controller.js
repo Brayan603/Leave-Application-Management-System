@@ -6,7 +6,7 @@ import { differenceInMonths } from "date-fns";
 // ✅ CREATE OR UPDATE ENTITLEMENT
 // =====================================
 export const createEntitlement = async (req, res) => {
-  const session = await mongoose.startSession();
+  const session = await mongoose.startSession(); 
 
   try {
     session.startTransaction();
