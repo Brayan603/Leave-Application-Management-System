@@ -6,42 +6,50 @@ const entitlementSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
     },
 
     leaveType: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LeaveType",
       required: true,
+      index: true,
     },
 
-    // fixed or accrual
+    // fixed | accrual
     type: {
       type: String,
       enum: ["fixed", "accrual"],
       required: true,
     },
 
-    // max leave days
+    // maximum leave allowed
     maxDays: {
       type: Number,
       required: true,
+      min: 0,
     },
 
-    // monthly accrual rate
+    // accrual per month
     accrualRate: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
-    // current available balance
+    // current balance
     totalDays: {
       type: Number,
       required: true,
+      default: 0,
+      min: 0,
     },
 
+    // consumed leave
     usedDays: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     startDate: {
@@ -49,7 +57,15 @@ const entitlementSchema = new mongoose.Schema(
       default: Date.now,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
+);
+
+// 🚀 Prevent duplicate entitlements
+entitlementSchema.index(
+  { user: 1, leaveType: 1 },
+  { unique: true }
 );
 
 export default mongoose.model(
