@@ -4,34 +4,29 @@ import { differenceInMonths } from "date-fns";
 
 /**
  * =====================================
- * CREATE OR UPDATE ENTITLEMENTS
+ * CREATE / UPDATE ENTITLEMENTS
  * =====================================
  */
 export const createEntitlement = async (req, res) => {
   try {
     const { userId, entitlements } = req.body;
 
-    // =====================
-    // VALIDATION
-    // =====================
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID is required",
-      });
-    }
+    console.log("REQUEST BODY:", JSON.stringify(req.body, null, 2));
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
+    // =========================
+    // VALIDATION
+    // =========================
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid user ID",
+        message: "Valid userId is required",
       });
     }
 
     if (!Array.isArray(entitlements) || entitlements.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Entitlements are required",
+        message: "Entitlements array is required",
       });
     }
 
@@ -39,57 +34,65 @@ export const createEntitlement = async (req, res) => {
     let createdCount = 0;
     let updatedCount = 0;
 
-    // =====================
-    // PROCESS EACH ITEM
-    // =====================
+    // =========================
+    // PROCESS EACH ENTITLEMENT
+    // =========================
     for (const item of entitlements) {
-      const {
-        leaveTypeId,
-        type,
-        maxDays,
-        accrualRate,
-        startDate,
-      } = item;
+      const leaveTypeId = item.leaveTypeId;
+      const type = item.type;
 
-      if (!leaveTypeId || !mongoose.Types.ObjectId.isValid(leaveTypeId)) continue;
-      if (!["fixed", "accrual"].includes(type)) continue;
+      // 🔥 FORCE CLEAN NUMBERS (FIX YOUR BUG)
+      const maxDays = Number(item.maxDays);
+      const accrualRate = Number(item.accrualRate || 0);
+      const startDate = item.startDate ? new Date(item.startDate) : new Date();
 
-      const max = Number(maxDays);
-      if (isNaN(max) || max < 0) continue;
-
-      const rate = Number(accrualRate || 0);
-      const start = startDate ? new Date(startDate) : new Date();
-
-      // =====================
-      // CALCULATE TOTAL DAYS
-      // =====================
-      let totalDays = 0;
-
-      if (type === "fixed") {
-        totalDays = max;
-      } else {
-        const months = differenceInMonths(new Date(), start);
-        const accrued = months * rate;
-        totalDays = Math.min(accrued, max);
+      // =========================
+      // VALIDATION GUARDS
+      // =========================
+      if (!leaveTypeId || !mongoose.Types.ObjectId.isValid(leaveTypeId)) {
+        console.log("SKIP INVALID leaveTypeId:", item);
+        continue;
       }
 
-      // =====================
-      // CHECK EXISTING
-      // =====================
+      if (!["fixed", "accrual"].includes(type)) {
+        console.log("SKIP INVALID type:", item);
+        continue;
+      }
+
+      if (!maxDays || maxDays <= 0) {
+        console.log("SKIP INVALID maxDays:", item);
+        continue;
+      }
+
+      // =========================
+      // CALCULATE TOTAL DAYS
+      // =========================
+      let totalDays;
+
+      if (type === "fixed") {
+        totalDays = maxDays;
+      } else {
+        const months = differenceInMonths(new Date(), startDate);
+        const accrued = months * accrualRate;
+        totalDays = Math.min(accrued, maxDays);
+      }
+
+      // =========================
+      // FIND EXISTING
+      // =========================
       let entitlement = await Entitlement.findOne({
         user: userId,
         leaveType: leaveTypeId,
       });
 
-      // =====================
+      // =========================
       // UPDATE
-      // =====================
+      // =========================
       if (entitlement) {
         entitlement.type = type;
-        entitlement.maxDays = max;
-        entitlement.accrualRate = type === "accrual" ? rate : 0;
-        entitlement.startDate = start;
-
+        entitlement.maxDays = maxDays;
+        entitlement.accrualRate = type === "accrual" ? accrualRate : 0;
+        entitlement.startDate = startDate;
         entitlement.totalDays = totalDays;
 
         const updated = await entitlement.save();
@@ -97,28 +100,38 @@ export const createEntitlement = async (req, res) => {
         results.push(updated);
         updatedCount++;
 
-        console.log("UPDATED:", userId, leaveTypeId);
+        console.log("UPDATED:", {
+          userId,
+          leaveTypeId,
+          maxDays,
+          totalDays,
+        });
       }
 
-      // =====================
+      // =========================
       // CREATE
-      // =====================
+      // =========================
       else {
         const created = await Entitlement.create({
           user: userId,
           leaveType: leaveTypeId,
           type,
-          maxDays: max,
-          accrualRate: type === "accrual" ? rate : 0,
+          maxDays,
+          accrualRate: type === "accrual" ? accrualRate : 0,
           totalDays,
           usedDays: 0,
-          startDate: start,
+          startDate,
         });
 
         results.push(created);
         createdCount++;
 
-        console.log("CREATED:", userId, leaveTypeId);
+        console.log("CREATED:", {
+          userId,
+          leaveTypeId,
+          maxDays,
+          totalDays,
+        });
       }
     }
 
@@ -131,7 +144,7 @@ export const createEntitlement = async (req, res) => {
       data: results,
     });
   } catch (err) {
-    console.error("CREATE ENTITLEMENT ERROR:", err);
+    console.error("ENTITLEMENT ERROR:", err);
     return res.status(500).json({
       success: false,
       message: err.message,
@@ -141,7 +154,7 @@ export const createEntitlement = async (req, res) => {
 
 /**
  * =====================================
- * GET ALL ENTITLEMENTS (DB TRUTH ONLY)
+ * GET ALL ENTITLEMENTS
  * =====================================
  */
 export const getAllEntitlements = async (req, res) => {
@@ -166,7 +179,7 @@ export const getAllEntitlements = async (req, res) => {
 
 /**
  * =====================================
- * GET USER ENTITLEMENTS (CALCULATED VIEW ONLY)
+ * GET USER ENTITLEMENTS (CALCULATED VIEW)
  * =====================================
  */
 export const getUserEntitlements = async (req, res) => {
@@ -176,25 +189,27 @@ export const getUserEntitlements = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid user ID",
+        message: "Invalid userId",
       });
     }
 
-    const entitlements = await Entitlement.find({ user: userId })
-      .populate("leaveType", "name");
+    const entitlements = await Entitlement.find({
+      user: userId,
+    }).populate("leaveType", "name");
 
     const data = entitlements.map((e) => {
-      let total = e.totalDays;
+      let totalDays = e.totalDays;
 
       if (e.type === "accrual") {
         const months = differenceInMonths(new Date(), e.startDate);
-        total = Math.min(months * e.accrualRate, e.maxDays);
+        const accrued = months * e.accrualRate;
+        totalDays = Math.min(accrued, e.maxDays);
       }
 
       return {
         ...e.toObject(),
-        totalDays: total,
-        availableDays: total - e.usedDays,
+        totalDays,
+        availableDays: totalDays - e.usedDays,
       };
     });
 
@@ -212,7 +227,7 @@ export const getUserEntitlements = async (req, res) => {
 
 /**
  * =====================================
- * UPDATE ENTITLEMENT (DIRECT PATCH)
+ * UPDATE ENTITLEMENT (SAFE)
  * =====================================
  */
 export const updateEntitlement = async (req, res) => {
@@ -269,4 +284,3 @@ export const deleteEntitlement = async (req, res) => {
     });
   }
 };
-
