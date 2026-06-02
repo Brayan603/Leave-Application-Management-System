@@ -10,9 +10,17 @@ import {
   getUserLeaveHistory,
   getUserLeaveHistoryById,
   getManagerLeaves,
-  getAllLeavesForAdmin,      // ✅ required for /admin/all
-  getAllLeavesSummary,       // ✅ required for /admin/summary
+  getAllLeavesForAdmin,
+  getAllLeavesSummary,
 } from "../controllers/leave.controller.js";
+
+// 🆕 Import holiday controllers
+import {
+  getHolidays,
+  addHoliday,
+  updateHoliday,
+  deleteHoliday,
+} from "../controllers/holiday.controller.js";
 
 import { protect, protectAdmin, requireManager } from "../middleware/auth.middleware.js";
 
@@ -25,7 +33,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// routes
+// ────────── Leave routes ──────────
 router.get("/types", getLeaveTypes);
 router.get("/my-leaves", protect, getMyLeaves);
 router.get("/my-leave-types", protect, getUserLeaveTypes);
@@ -36,9 +44,18 @@ router.get("/pending", protect, requireManager, getPendingLeaves);
 router.put("/:id/status", protect, requireManager, updateLeaveStatus);
 router.get("/manager/leaves", protect, requireManager, getManagerLeaves);
 
-// Admin-only routes – summary must be defined before /all (more specific first)
+// Admin-only leave routes
 router.get("/admin/summary", protectAdmin, getAllLeavesSummary);
 router.get("/admin/all", protectAdmin, getAllLeavesForAdmin);
+
+// ────────── 🆕 Holiday routes ──────────
+// GET holidays – accessible to any authenticated user
+router.get("/holidays", protect, getHolidays);
+
+// Admin-only holiday management
+router.post("/holidays", protectAdmin, addHoliday);
+router.put("/holidays/:id", protectAdmin, updateHoliday);
+router.delete("/holidays/:id", protectAdmin, deleteHoliday);
 
 export default router;
 
