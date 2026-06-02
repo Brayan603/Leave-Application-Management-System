@@ -4,46 +4,32 @@ import Leave from "../models/LeaveRequest.js";
 import Entitlement from "../models/Entitlement.js";
 import LeaveType from "../models/LeaveType.js";
 import User from "../models/User.js";
-import Holiday from "../models/Holiday.js";                     // ← NEW import
+import Holiday from "../models/Holiday.js";
 import { differenceInMonths } from "date-fns";
 import notificationService from "../services/notificationService.js";
-import { countBusinessDays } from "../utils/dateUtils.js";     // ← NEW import
+import { countBusinessDays } from "../utils/dateUtils.js";
+
+const getUserId = (req) => req.user?._id || req.user?.id || req.user;
+const isSameId = (a, b) => a?.toString() === b?.toString();
 
 // ============================
-// 🔐 SAFE USER ID HELPER
-// ============================
-const getUserId = (req) => {
-  return req.user?._id || req.user?.id || req.user;
-};
-
-// ============================
-// 🔥 SAFE OBJECT ID COMPARE
-// ============================
-const isSameId = (a, b) => {
-  if (!a || !b) return false;
-  return a.toString() === b.toString();
-};
-
-// ============================
-// ✅ APPLY LEAVE – SERVER-SIDE BUSINESS DAYS
+// ✅ APPLY LEAVE – stores entitlement
 // ============================
 export const applyLeave = async (req, res) => {
   try {
     const userId = getUserId(req);
-    const { type, start, end, reason } = req.body;       // 'days' is now ignored
+    const { type, start, end, reason } = req.body;
     const attachment = req.file ? req.file.filename : null;
 
     if (!userId) {
       return res.status(401).json({ message: "User not authenticated" });
     }
 
-    // 1. Validate leave type
     const leaveType = await LeaveType.findOne({ name: type });
     if (!leaveType) {
       return res.status(404).json({ message: "Leave type not found" });
     }
 
-    // 2. Find entitlement
     const entitlement = await Entitlement.findOne({
       user: userId,
       leaveType: leaveType._id,
@@ -52,7 +38,7 @@ export const applyLeave = async (req, res) => {
       return res.status(400).json({ message: "Not entitled to this leave type" });
     }
 
-    // 3. Recalculate current total days (for accrual / fixed)
+    // Calculate current total days (same as before)
     let currentTotalDays = entitlement.totalDays;
     if (entitlement.type === "accrual") {
       const today = new Date();
@@ -60,39 +46,27 @@ export const applyLeave = async (req, res) => {
       const monthsWorked = differenceInMonths(today, accrualStart);
       const accrued = monthsWorked * (entitlement.accrualRate || 0);
       currentTotalDays = Math.min(accrued, entitlement.maxDays);
-    } else {
-      if (!currentTotalDays && entitlement.maxDays) {
-        currentTotalDays = entitlement.maxDays;
-      }
+    } else if (!currentTotalDays && entitlement.maxDays) {
+      currentTotalDays = entitlement.maxDays;
     }
 
-    // 4. Fetch holidays overlapping the requested date range
+    // Fetch holidays ...
     const holidays = await Holiday.find({
-      date: {
-        $gte: new Date(start),
-        $lte: new Date(end),
-      },
+      date: { $gte: new Date(start), $lte: new Date(end) },
       $or: [
         { organization: req.user.organization || null },
-        { organization: null },                     // global holidays
+        { organization: null },
       ],
     }).select("date");
-
     const holidayDates = holidays.map((h) => {
       const d = new Date(h.date);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     });
-
-    // 5. Recalculate business days (exclude weekends + holidays)
     const businessDays = countBusinessDays(start, end, holidayDates);
-
     if (businessDays <= 0) {
-      return res.status(400).json({
-        message: "The selected date range contains no business days (weekends or holidays).",
-      });
+      return res.status(400).json({ message: "The selected date range contains no business days." });
     }
 
-    // 6. Check remaining balance
     const remaining = currentTotalDays - entitlement.usedDays;
     if (businessDays > remaining) {
       return res.status(400).json({
@@ -100,19 +74,20 @@ export const applyLeave = async (req, res) => {
       });
     }
 
-    // 7. Create the leave request using the server‑calculated days
+    // ✅ Create leave WITH entitlement reference
     const leave = await Leave.create({
       user: userId,
       leaveType: leaveType._id,
+      entitlement: entitlement._id,          // <-- stored here
       start,
       end,
-      days: businessDays,            // ← authoritative value from server
+      days: businessDays,
       reason,
       attachment,
       status: "Pending",
     });
 
-    // ────────── 📩 Notify manager ──────────
+    // Notification (unchanged)
     try {
       const employee = await User.findById(userId).select("firstName lastName manager");
       const manager = await User.findById(employee.manager).select("email phone firstName lastName");
@@ -151,39 +126,7 @@ export const applyLeave = async (req, res) => {
 };
 
 // ============================
-// ✅ GET PENDING LEAVES (Manager only)
-// ============================
-export const getPendingLeaves = async (req, res) => {
-  try {
-    const managerId = getUserId(req);
-    if (!managerId) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-
-    const employees = await User.find({ manager: managerId, role: "employee" }).select("_id");
-    const employeeIds = employees.map((e) => e._id);
-
-    if (employeeIds.length === 0) {
-      return res.status(200).json([]);
-    }
-
-    const leaves = await Leave.find({
-      user: { $in: employeeIds },
-      status: { $regex: /^pending$/i },
-    })
-      .populate("user", "firstName lastName email")
-      .populate("leaveType", "name")
-      .sort({ createdAt: -1 });
-
-    return res.json(leaves);
-  } catch (err) {
-    console.error("PENDING LEAVES ERROR:", err);
-    return res.status(500).json({ message: "Error fetching pending leaves" });
-  }
-};
-
-// ============================
-// ✅ UPDATE LEAVE STATUS – with notification
+// ✅ UPDATE LEAVE STATUS – uses stored entitlement
 // ============================
 export const updateLeaveStatus = async (req, res) => {
   try {
@@ -204,10 +147,15 @@ export const updateLeaveStatus = async (req, res) => {
     const newStatus = action === "approve" ? "Approved" : "Rejected";
 
     if (newStatus === "Approved") {
-      const entitlement = await Entitlement.findOne({ user: leave.user._id, leaveType: leave.leaveType._id });
-      if (!entitlement) return res.status(400).json({ message: "Entitlement not found" });
+      // ✅ Use the stored entitlement ID
+      const entitlement = await Entitlement.findById(leave.entitlement);
+      if (!entitlement) {
+        return res.status(400).json({
+          message: "Entitlement record no longer exists. Cannot approve this leave.",
+        });
+      }
 
-      // Recalculate totalDays for accrual
+      // Recalculate totalDays for accrual (same as before)
       let currentTotal = entitlement.totalDays;
       if (entitlement.type === "accrual") {
         const today = new Date();
@@ -215,15 +163,15 @@ export const updateLeaveStatus = async (req, res) => {
         const monthsWorked = differenceInMonths(today, accrualStart);
         const accrued = monthsWorked * (entitlement.accrualRate || 0);
         currentTotal = Math.min(accrued, entitlement.maxDays);
-      } else {
-        if (!currentTotal && entitlement.maxDays) {
-          currentTotal = entitlement.maxDays;
-        }
+      } else if (!currentTotal && entitlement.maxDays) {
+        currentTotal = entitlement.maxDays;
       }
 
       const remaining = currentTotal - entitlement.usedDays;
       if (leave.days > remaining) {
-        return res.status(400).json({ message: `Not enough balance. Remaining: ${remaining}` });
+        return res.status(400).json({
+          message: `Not enough balance. Remaining: ${remaining}`,
+        });
       }
 
       entitlement.usedDays += leave.days;
@@ -236,7 +184,7 @@ export const updateLeaveStatus = async (req, res) => {
       { new: true }
     );
 
-    // ────────── 📩 Notify employee ──────────
+    // Notification (unchanged)
     try {
       const employee = leave.user;
       const manager = await User.findById(managerId).select("firstName lastName");
