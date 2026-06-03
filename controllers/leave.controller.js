@@ -1,4 +1,3 @@
-// leave.controller.js
 import mongoose from "mongoose";
 import Leave from "../models/LeaveRequest.js";
 import Entitlement from "../models/Entitlement.js";
@@ -8,6 +7,8 @@ import Holiday from "../models/Holiday.js";
 import { differenceInMonths } from "date-fns";
 import notificationService from "../services/notificationService.js";
 import { countBusinessDays } from "../utils/dateUtils.js";
+import fs from "fs";          // 🆕 for attachment
+import path from "path";      // 🆕 for attachment
 
 // ============================
 // 🔐 SAFE USER ID HELPER
@@ -91,7 +92,7 @@ export const applyLeave = async (req, res) => {
     const leave = await Leave.create({
       user: userId,
       leaveType: leaveType._id,
-      entitlement: entitlement._id,   // ✅ store entitlement reference
+      entitlement: entitlement._id,
       start,
       end,
       days: businessDays,
@@ -265,6 +266,42 @@ export const updateLeaveStatus = async (req, res) => {
   } catch (err) {
     console.error("UPDATE ERROR:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ============================
+// 📎 GET LEAVE ATTACHMENT (Manager / Admin / Owner)
+// ============================
+export const getAttachment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = getUserId(req);
+
+    const leave = await Leave.findById(id).populate("user");
+    if (!leave) return res.status(404).json({ message: "Leave not found" });
+
+    const isOwner = isSameId(leave.user?._id, userId);
+    const isManager = isSameId(leave.user?.manager, userId);
+    const isAdmin = req.user?.role === "admin";
+
+    if (!isOwner && !isManager && !isAdmin) {
+      return res.status(403).json({ message: "Not authorized to view attachment" });
+    }
+
+    if (!leave.attachment) {
+      return res.status(404).json({ message: "No attachment found" });
+    }
+
+    const filePath = path.join(process.cwd(), "uploads", leave.attachment);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: "Attachment file missing on server" });
+    }
+
+    res.sendFile(filePath);
+  } catch (err) {
+    console.error("GET ATTACHMENT ERROR:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
