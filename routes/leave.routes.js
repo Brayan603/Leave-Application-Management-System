@@ -14,6 +14,7 @@ import {
   getManagerLeaves,
   getAllLeavesForAdmin,
   getAllLeavesSummary,
+  getAttachment, // 🆕 new import
 } from "../controllers/leave.controller.js";
 
 import {
@@ -38,17 +39,16 @@ if (!fs.existsSync(uploadDir)) {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    // Sanitize filename: keep only alphanumeric, hyphen, underscore, and one dot for extension
     const ext = path.extname(file.originalname);
     const baseName = path.basename(file.originalname, ext);
-    const safeBase = baseName.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 100); // limit length
+    const safeBase = baseName.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 100);
     const uniquePrefix = Date.now() + "-";
     cb(null, uniquePrefix + safeBase + ext);
   },
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
 // ────────── Leave routes ──────────
@@ -59,6 +59,10 @@ router.get("/history", protect, getUserLeaveHistory);
 router.get("/history/:id", protect, requireManager, getUserLeaveHistoryById);
 router.post("/apply", protect, upload.single("attachment"), applyLeave);
 router.get("/pending", protect, requireManager, getPendingLeaves);
+
+// 🆕 Attachment route (must be before /:id/status)
+router.get("/attachment/:id", protect, getAttachment);
+
 router.put("/:id/status", protect, requireManager, updateLeaveStatus);
 router.get("/manager/leaves", protect, requireManager, getManagerLeaves);
 
@@ -73,7 +77,6 @@ router.put("/holidays/:id", protectAdmin, updateHoliday);
 router.delete("/holidays/:id", protectAdmin, deleteHoliday);
 
 export default router;
-
 
 
 
