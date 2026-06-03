@@ -1,5 +1,7 @@
 import express from "express";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 import {
   applyLeave,
   getLeaveTypes,
@@ -14,7 +16,6 @@ import {
   getAllLeavesSummary,
 } from "../controllers/leave.controller.js";
 
-// 🆕 Import holiday controllers
 import {
   getHolidays,
   addHoliday,
@@ -26,12 +27,29 @@ import { protect, protectAdmin, requireManager } from "../middleware/auth.middle
 
 const router = express.Router();
 
-// multer setup
+// ✅ Create uploads directory if it doesn't exist
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("✅ Created uploads directory at", uploadDir);
+}
+
+// ✅ Multer configuration with safe filename
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    // Sanitize filename: keep only alphanumeric, hyphen, underscore, and one dot for extension
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext);
+    const safeBase = baseName.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 100); // limit length
+    const uniquePrefix = Date.now() + "-";
+    cb(null, uniquePrefix + safeBase + ext);
+  },
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+});
 
 // ────────── Leave routes ──────────
 router.get("/types", getLeaveTypes);
@@ -48,11 +66,8 @@ router.get("/manager/leaves", protect, requireManager, getManagerLeaves);
 router.get("/admin/summary", protectAdmin, getAllLeavesSummary);
 router.get("/admin/all", protectAdmin, getAllLeavesForAdmin);
 
-// ────────── 🆕 Holiday routes ──────────
-// GET holidays – accessible to any authenticated user
+// ────────── Holiday routes ──────────
 router.get("/holidays", protect, getHolidays);
-
-// Admin-only holiday management
 router.post("/holidays", protectAdmin, addHoliday);
 router.put("/holidays/:id", protectAdmin, updateHoliday);
 router.delete("/holidays/:id", protectAdmin, deleteHoliday);
