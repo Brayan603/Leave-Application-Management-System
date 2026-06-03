@@ -2,6 +2,9 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import http from "http";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 import connectDB from "./config/db.js";
 import morgan from "morgan";
 import { initSocket } from "./socket/socketHandler.js";
@@ -22,9 +25,24 @@ dotenv.config();
 
 const app = express();
 
+// ─── Derive __dirname for ES modules ──────────
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ─── Create uploads folder if missing ──────────
+const uploadPath = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath, { recursive: true });
+  console.log("✅ Created uploads directory at", uploadPath);
+}
+
+// ─── Middleware ───────────────────────────────
 app.use(morgan("dev"));
 app.use(cors({ origin: "https://leave-management20-systems.vercel.app", credentials: true }));
 app.use(express.json());
+
+// Serve uploaded files at /api/uploads
+app.use("/api/uploads", express.static(uploadPath));
 
 app.get("/", (req, res) => res.send("API running successfully!"));
 
@@ -57,30 +75,6 @@ const startServer = async () => {
   try {
     await connectDB();
     console.log("🟢 Connected to DB: leave-management-system");
-
-    // ========== EMAIL TEST ==========
-    console.log("🔍 Testing email configuration...");
-    try {
-      const emailService = await import("./services/emailService.js").then(m => m.default || m);
-      
-      if (typeof emailService.verifyConnection === 'function') {
-        await emailService.verifyConnection();
-      }
-      
-      await emailService.sendEmail({
-        to: "b.malova60@gmail.com",
-        type: "broadcast",
-        data: {
-          title: "Server Startup Test",
-          message: "If you receive this, Brevo is configured correctly!",
-          recipientName: "Test User",
-        },
-      });
-      console.log("✅ Startup test email sent successfully");
-    } catch (err) {
-      console.error("❌ Startup test email failed:", err.message);
-      console.error("Full error details:", err);
-    }
 
     const httpServer = http.createServer(app);
     const io = initSocket(httpServer);
